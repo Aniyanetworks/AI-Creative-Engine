@@ -1,0 +1,31 @@
+# ---- Secrets: never commit ----
+.env
+.env.*
+!.env.example
+
+# ---- Private webhook path ----
+# The workflow's webhook URL path is a secret (anyone with it can trigger runs while the workflow is active).
+# It is stored in this file and baked into the generated workflow JSON, so both stay local.
+# Regenerate the workflow any time with:  node tools/build_workflow.js
+workflow/.webhook-path
+workflow/creative-engine.n8n.json
+
+# ---- Dependencies and build output ----
+node_modules/
+app/dist/
+dist/
+
+# ---- Local run data (client websites, generated ad packs) ----
+app/server/data/
+
+# ---- Logs, OS and editor files ----
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/
+
+# Vite temp files
+*.timestamp-*.mjs
