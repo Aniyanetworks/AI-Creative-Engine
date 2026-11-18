@@ -30,23 +30,28 @@ try {
     if (i > 0 && !line.trim().startsWith('#')) env[line.slice(0, i).trim()] = line.slice(i + 1).trim().replace(/^['"]|['"]$/g, '');
   }
 } catch { /* handled below */ }
-const N8N_BASE = (process.env.N8N_BASE_URL || env.N8N_BASE_URL || 'https://n8n.srv1300653.hstgr.cloud').replace(/\/+$/, '');
-const N8N_KEY = process.env.N8N_API || env.N8N_API;
-let webhookPath = (process.env.N8N_WEBHOOK_PATH || env.N8N_WEBHOOK_PATH || '').trim();
+// Reads a setting from the environment (Netlify) or .env, tolerating stray quotes and whitespace.
+const pick = (name) => String(process.env[name] || env[name] || '').trim().replace(/^['"]|['"]$/g, '').trim();
+const N8N_BASE = (pick('N8N_BASE_URL') || 'https://n8n.srv1300653.hstgr.cloud').replace(/\/+$/, '');
+const N8N_KEY = pick('N8N_API');
+let webhookPath = pick('N8N_WEBHOOK_PATH');
 if (!webhookPath) try { webhookPath = fs.readFileSync(path.join(projectRoot, 'workflow', '.webhook-path'), 'utf8').trim(); } catch { /* handled in status */ }
 
+// Accept either the bare path or the full webhook URL ("https://host/webhook/<path>").
+{ const m = /\/webhook(?:-test)?\/([^/?#\s]+)/.exec(webhookPath); webhookPath = (m ? m[1] : webhookPath).replace(/^\/+|\/+$/g, ''); }
+
 // ---- run storage: Supabase when configured, otherwise a local file ----
-const SUPABASE_URL = process.env.SUPABASE_URL || env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || env.SUPABASE_SERVICE_KEY;
+const SUPABASE_URL = pick('SUPABASE_URL').replace(/\/+$/, '');
+const SUPABASE_KEY = pick('SUPABASE_SERVICE_KEY');
 const store = SUPABASE_URL && SUPABASE_KEY
   ? createSupabaseStore(SUPABASE_URL, SUPABASE_KEY)
   : createLocalStore(SERVERLESS ? path.join(os.tmpdir(), 'ace-data') : path.join(here, 'data'));
 const FINAL = new Set(['success', 'error']);
 
 // ---- accounts: Supabase Auth + admin approval (only when Supabase storage is configured) ----
-const SUPABASE_PUBLISHABLE = process.env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_PUBLISHABLE_KEY;
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || env.ADMIN_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-const AUTH_ON = store.kind === 'supabase' && String(process.env.AUTH_REQUIRED || env.AUTH_REQUIRED || '').toLowerCase() !== 'false';
+const SUPABASE_PUBLISHABLE = pick('SUPABASE_PUBLISHABLE_KEY');
+const ADMIN_EMAILS = pick('ADMIN_EMAILS').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+const AUTH_ON = store.kind === 'supabase' && pick('AUTH_REQUIRED').toLowerCase() !== 'false';
 const auth = AUTH_ON ? createAuth({ supabaseUrl: SUPABASE_URL, apiKey: SUPABASE_PUBLISHABLE || SUPABASE_KEY }) : null;
 
 // ---- n8n helpers ----
