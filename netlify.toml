@@ -1,0 +1,25 @@
+# Netlify build configuration. Values here override the Netlify UI fields.
+[build]
+  base = "app"                # the React app and its functions live in /app
+  command = "npm run build"   # vite build -> app/dist
+  publish = "dist"            # relative to base
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[functions]
+  directory = "netlify/functions"   # relative to base
+  node_bundler = "nft"          # ships node_modules as-is; the safest mode for an Express app
+
+# API requests go to the single function. basePath in api.mjs strips the function prefix.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/api/:splat"
+  status = 200
+  force = true
+
+# Single-page app fallback
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

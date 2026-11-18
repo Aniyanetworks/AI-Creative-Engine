@@ -7,6 +7,7 @@ import path from 'path';
 import dns from 'dns';
 import net from 'net';
 import crypto from 'crypto';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { createSupabaseStore, createLocalStore } from './store.js';
 import { createAuth, rateLimiter } from './auth.js';
@@ -17,6 +18,8 @@ if (net.setDefaultAutoSelectFamilyAttemptTimeout) net.setDefaultAutoSelectFamily
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(here, '..', '..');
 const PORT = Number(process.env.PORT || 8787);
+// True when running as a Netlify/AWS Lambda function (no long-running server, read-only disk).
+const SERVERLESS = !!(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
 const WORKFLOW_NAME = 'AI Creative Engine: URL to Ad Pack';
 
 // ---- config from the project's .env (never sent to the browser) ----
@@ -29,15 +32,15 @@ try {
 } catch { /* handled below */ }
 const N8N_BASE = (process.env.N8N_BASE_URL || env.N8N_BASE_URL || 'https://n8n.srv1300653.hstgr.cloud').replace(/\/+$/, '');
 const N8N_KEY = process.env.N8N_API || env.N8N_API;
-let webhookPath = '';
-try { webhookPath = fs.readFileSync(path.join(projectRoot, 'workflow', '.webhook-path'), 'utf8').trim(); } catch { /* handled in status */ }
+let webhookPath = (process.env.N8N_WEBHOOK_PATH || env.N8N_WEBHOOK_PATH || '').trim();
+if (!webhookPath) try { webhookPath = fs.readFileSync(path.join(projectRoot, 'workflow', '.webhook-path'), 'utf8').trim(); } catch { /* handled in status */ }
 
 // ---- run storage: Supabase when configured, otherwise a local file ----
 const SUPABASE_URL = process.env.SUPABASE_URL || env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || env.SUPABASE_SERVICE_KEY;
 const store = SUPABASE_URL && SUPABASE_KEY
   ? createSupabaseStore(SUPABASE_URL, SUPABASE_KEY)
-  : createLocalStore(path.join(here, 'data'));
+  : createLocalStore(SERVERLESS ? path.join(os.tmpdir(), 'ace-data') : path.join(here, 'data'));
 const FINAL = new Set(['success', 'error']);
 
 // ---- accounts: Supabase Auth + admin approval (only when Supabase storage is configured) ----
@@ -158,19 +161,23 @@ async function refreshJob(job) {
 }
 
 // Keeps unfinished runs moving even when nobody has the page open.
+// Locally this runs on a timer; on Netlify a scheduled function calls it (netlify/functions/sync.mjs).
 let syncing = false;
-setInterval(async () => {
-  if (syncing) return;
+export async function syncPending() {
+  if (syncing) return 0;
   syncing = true;
+  let n = 0;
   try {
     const pending = (await store.list()).filter((j) => !FINAL.has(j.status) && Date.now() - new Date(j.createdAt).getTime() < 2 * 3600 * 1000);
-    for (const j of pending) { const full = await store.get(j.id); if (full) await refreshJob(full).catch(() => {}); }
+    for (const j of pending) { const full = await store.get(j.id); if (full) { await refreshJob(full).catch(() => {}); n += 1; } }
   } catch { /* storage or n8n briefly unavailable */ }
   finally { syncing = false; }
-}, 15000);
+  return n;
+}
+if (!SERVERLESS) setInterval(syncPending, 15000);
 
 const app = express();
-app.set('trust proxy', false);
+app.set('trust proxy', SERVERLESS ? 1 : false);
 app.use(express.json({ limit: '1mb' }));
 
 // ---- auth middleware ----
@@ -263,7 +270,7 @@ app.post('/api/jobs', authenticate, approved, async (req, res) => {
     let u;
     try { u = new URL(String(b.url || '').trim()); } catch { return res.status(400).json({ error: 'Enter a full website address, e.g. https://example.com' }); }
     if (!['http:', 'https:'].includes(u.protocol)) return res.status(400).json({ error: 'Only http(s) addresses are allowed.' });
-    if (!webhookPath) return res.status(500).json({ error: 'workflow/.webhook-path not found. Run tools/build_workflow.js and tools/deploy_n8n.js.' });
+    if (!webhookPath) return res.status(500).json({ error: 'The n8n webhook path is not set. Set N8N_WEBHOOK_PATH (on Netlify) or run tools/build_workflow.js locally.' });
     const wf = await getWorkflow();
     if (!wf.active) return res.status(409).json({ error: 'The workflow is inactive. Activate it first (button at the top).' });
 
@@ -317,4 +324,6 @@ if (fs.existsSync(dist)) {
   app.get(/^\/(?!api).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
 
-app.listen(PORT, '127.0.0.1', () => console.log('API on http://127.0.0.1:' + PORT + ' -> n8n ' + N8N_BASE));
+if (!SERVERLESS) app.listen(PORT, '127.0.0.1', () => console.log('API on http://127.0.0.1:' + PORT + ' -> n8n ' + N8N_BASE));
+
+export default app;

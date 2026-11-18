@@ -94,3 +94,24 @@ With Supabase configured, the app requires sign-in (Supabase Auth, email + passw
 - **Email confirmation:** Supabase currently requires new users to confirm their email, and its built-in mailer allows only a few emails per hour. For a smoother start, turn off *Confirm email* under Authentication > Sign In / Providers > Email, or set up your own SMTP.
 - Set `AUTH_REQUIRED=false` in `.env` to switch sign-in off (single-user local use).
 - Database: `supabase/schema.sql` includes the extra table (`ace_profiles`) and `user_id` column; it is safe to re-run.
+
+## Deploying to Netlify
+Netlify serves the React app from its CDN and runs the backend as one Netlify Function (`app/netlify/functions/api.mjs`, wrapping the same Express app). A scheduled function (`sync.mjs`, every minute) finishes unfinished runs even when nobody has the page open. Config lives in `netlify.toml` and overrides the Netlify UI fields (Base `app`, Build `npm run build`, Publish `dist`, Functions `netlify/functions`).
+
+1. Push the repo to GitHub, then in Netlify: Add new site > Import from Git > pick the repo, branch `main`. Leave the build fields as they are (or fill the values above).
+2. Site configuration > Environment variables. Add these (mark the secret ones as **Secret**):
+
+| Variable | Value |
+|---|---|
+| `N8N_BASE_URL` | your n8n address, e.g. `https://n8n.example.com` |
+| `N8N_API` | n8n API key (secret) |
+| `N8N_WEBHOOK_PATH` | the path from `workflow/.webhook-path` (secret) |
+| `SUPABASE_URL` | `https://<project>.supabase.co` |
+| `SUPABASE_SERVICE_KEY` | Supabase **secret** key (secret) |
+| `ADMIN_EMAILS` | your admin email(s), comma separated |
+
+   Optional: `HEYGEN_*` and `APIFY_TOKEN` are set in the n8n workflow, not here.
+3. Deploy. Then in Supabase > Authentication > URL Configuration, set **Site URL** to your Netlify address and add it under **Redirect URLs**, so confirmation emails return to the live site.
+4. The n8n workflow itself stays on your n8n server; Netlify only calls it.
+
+Notes: the API function has Netlify's default time limit (10 s on free plans). Normal requests take under 2 s, but a slow n8n could exceed it; a failed poll just retries 3 seconds later. Without Supabase configured, Netlify has no persistent storage, so Supabase is required there.

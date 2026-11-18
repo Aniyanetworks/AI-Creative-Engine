@@ -29,3 +29,6 @@ Thumbs.db
 
 # Vite temp files
 *.timestamp-*.mjs
+
+# Netlify local state
+.netlify/
