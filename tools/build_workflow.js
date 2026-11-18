@@ -314,13 +314,44 @@ llmStep('Video Scripts', 'video_scripts', 12000, {
   user: `'BRAND BRIEF:\\n' + JSON.stringify(ctx.brief) + '\\n\\nHOOKS:\\n' + JSON.stringify(ctx.hooks)`,
   parse: `
 if (!Array.isArray(data.videos) || data.videos.length < 5) throw new Error('Expected 5 video scripts, got ' + (data.videos || []).length);
-return [{ json: { ...ctx, videos: data.videos.slice(0, 5) } }];`,
+
+const ICONS = ['bolt', 'clock', 'phone', 'shield', 'chart', 'check', 'wrench', 'star', 'mail', 'calendar', 'target', 'dollar'];
+const KINDS = ['hook', 'point', 'proof', 'cta'];
+const str = (v, n) => String(v == null ? '' : v).replace(/\\s+/g, ' ').trim().slice(0, n);
+
+// Fallback storyboard when the model returns only a plain script: one scene per sentence.
+const scenesFromScript = (script, cta) => {
+  const sentences = String(script || '').match(/[^.!?]+[.!?]*/g) || [];
+  const parts = sentences.map((x) => x.trim()).filter(Boolean).slice(0, 6);
+  return parts.map((vo, i) => ({
+    kind: i === 0 ? 'hook' : i === parts.length - 1 ? 'cta' : 'point',
+    vo, headline: vo.split(' ').slice(0, 5).join(' ').replace(/[.,!?]+$/, ''), highlight: '', sub: i === parts.length - 1 ? str(cta, 40) : '', icon: 'star',
+  }));
+};
+
+const videos = data.videos.slice(0, 5).map((v, i) => {
+  let scenes = Array.isArray(v.scenes) ? v.scenes : [];
+  if (scenes.length < 3) scenes = scenesFromScript(v.spoken_script, v.cta);
+  scenes = scenes.slice(0, 7).map((sc, k, all) => {
+    const headline = str(sc.headline, 40);
+    const words = headline.split(' ');
+    const hl = words.find((w) => w.toLowerCase().replace(/[^a-z0-9%+$]/g, '') === String(sc.highlight || '').toLowerCase().replace(/[^a-z0-9%+$]/g, '')) || '';
+    return {
+      kind: KINDS.includes(sc.kind) ? sc.kind : k === 0 ? 'hook' : k === all.length - 1 ? 'cta' : 'point',
+      vo: str(sc.vo, 220), headline, highlight: hl, sub: str(sc.sub, 60), icon: ICONS.includes(sc.icon) ? sc.icon : 'star',
+    };
+  }).filter((sc) => sc.vo);
+  if (scenes.length < 2) throw new Error('Video ' + (i + 1) + ' has no usable storyboard');
+  const spoken = scenes.map((sc) => sc.vo).join(' '); // the voiceover is exactly the scene lines
+  return { ...v, id: v.id || i + 1, scenes, spoken_script: spoken, captions: scenes.map((sc) => sc.headline) };
+});
+return [{ json: { ...ctx, videos } }];`,
 });
 
 codeNode('Render Videos', BASE + `
 const ctx = $input.first().json;
 const skip = ctx.dry_run || !cfg.heygen_key || !cfg.heygen_avatar_id || !cfg.heygen_voice_id;
-const reason = ctx.dry_run ? 'skipped (dry_run)' : 'skipped (script only: set heygen_key, heygen_avatar_id, heygen_voice_id in Config)';
+const reason = ctx.dry_run ? 'storyboard ready (dry run)' : 'storyboard ready (render on your computer with video/render.mjs, or set heygen_* in Config for an avatar video)';
 const limit = Math.min(parseInt(input.max_videos !== undefined && input.max_videos !== '' ? input.max_videos : cfg.max_videos, 10) || 0, ctx.videos.length);
 const H = { 'X-Api-Key': cfg.heygen_key, 'content-type': 'application/json' };
 
@@ -348,7 +379,7 @@ const submit = async (v) => {
 
 const vids = [];
 for (const v of ctx.videos.slice(0, limit)) vids.push(await submit(v));
-vids.push(...ctx.videos.slice(limit).map((v) => ({ ...v, video_id: null, video_url: null, video_status: 'skipped (max_videos)' })));
+vids.push(...ctx.videos.slice(limit).map((v) => ({ ...v, video_id: null, video_url: null, video_status: skip ? reason : 'skipped (max_videos)' })));
 
 const deadline = Date.now() + 20 * 60 * 1000;
 while (vids.some((v) => v.video_status === 'processing') && Date.now() < deadline) {

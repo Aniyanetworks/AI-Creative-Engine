@@ -1,0 +1,12 @@
+{
+  "brand": { "name": "Aniya Network Solutions", "colors": ["#1a73e8", "#ff6600"] },
+  "title": "Stop wasting hours on manual work",
+  "cta": "Book a free consult",
+  "scenes": [
+    { "kind": "hook", "vo": "Still doing the same admin tasks by hand every single week?", "headline": "Still doing it by hand?", "highlight": "hand?", "sub": "", "icon": "clock" },
+    { "kind": "point", "vo": "Missed calls and slow follow-ups quietly cost you real jobs.", "headline": "Slow replies lose jobs", "highlight": "lose", "sub": "Every missed call is a competitor's win", "icon": "phone" },
+    { "kind": "point", "vo": "We connect your CRM, phones and forms so every lead gets an instant reply.", "headline": "Instant replies, automatically", "highlight": "automatically", "sub": "CRM, phones and forms, connected", "icon": "bolt" },
+    { "kind": "proof", "vo": "Over one hundred workflows built, cutting admin time by forty percent on average.", "headline": "100+ workflows built", "highlight": "", "sub": "", "icon": "chart" },
+    { "kind": "cta", "vo": "Book a free thirty minute consultation and see it live.", "headline": "See it live", "highlight": "live", "sub": "Book a free consult", "icon": "calendar" }
+  ]
+}

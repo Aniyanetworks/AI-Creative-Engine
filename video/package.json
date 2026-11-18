@@ -1,0 +1,25 @@
+{
+  "name": "ai-creative-engine-video",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Renders the storyboards from the Creative Engine into MP4 ads with Remotion",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "demo": "node render.mjs --demo",
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "@remotion/bundler": "^4.0.545",
+    "@remotion/cli": "^4.0.545",
+    "@remotion/google-fonts": "^4.0.545",
+    "@remotion/renderer": "^4.0.545",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "remotion": "^4.0.545"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}

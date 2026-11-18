@@ -116,7 +116,7 @@ function Videos({ pack, jobId }) {
         {videos.map((v) => (
           <article key={v.id} className="vid">
             <div className="row between"><span className="tag" style={{ margin: 0 }}>{v.format}</span>
-              <span className={'pill small ' + (v.video_url ? 'ok' : '')}>{v.video_url ? 'Rendered' : /storyboard|script only/.test(v.video_status || '') ? 'Storyboard ready' : v.video_status}</span></div>
+              <span className={'pill small ' + (v.video_url ? 'ok' : '')}>{v.video_url ? 'Rendered' : /failed|timed out/.test(v.video_status || '') ? v.video_status : (v.scenes || []).length ? 'Storyboard ready' : v.video_status}</span></div>
             <h2 style={{ fontSize: 16 }}>{v.title}</h2>
             {(v.scenes || []).length ? (
               <ol className="storyboard">

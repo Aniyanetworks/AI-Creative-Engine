@@ -115,3 +115,19 @@ Netlify serves the React app from its CDN and runs the backend as one Netlify Fu
 4. The n8n workflow itself stays on your n8n server; Netlify only calls it.
 
 Notes: the API function has Netlify's default time limit (10 s on free plans). Normal requests take under 2 s, but a slow n8n could exceed it; a failed poll just retries 3 seconds later. Without Supabase configured, Netlify has no persistent storage, so Supabase is required there.
+
+## Videos (Claude-directed motion graphics, rendered with Remotion)
+Anthropic has no video or avatar model, so the videos are *directed* by Claude and rendered by code. The workflow's video step writes a storyboard for each of the 5 videos: scenes with a headline, one highlighted word, an icon, a subtitle and the voiceover line. `video/` turns each storyboard into a 1080x1920 MP4: animated brand-coloured text, icons, word-synced captions, sound effects and an ElevenLabs voiceover. No human or avatar appears on screen. (HeyGen is still supported as an optional extra: set `heygen_*` in the workflow's Config node.)
+
+One-time setup: `cd video && npm install` (already done if you used the project as-is). Add `ELEVENLABS_API_KEY=` to `.env`.
+
+Render a finished run (the app's Videos tab shows the exact command with the run id):
+```
+cd video
+node render.mjs <runId>          # run saved in Supabase
+node render.mjs --file pack.json # or a pack downloaded from the Report tab
+node render.mjs --demo           # sample video, checks rendering works on this machine
+```
+Options: `--only 1,3` (some videos), `--no-voice` (silent with captions), `--stills 20,90` (also save PNG frames to inspect the design), `--crf 18` (quality). Videos land in `video/out/<run>/`. The first run downloads a headless Chrome (about 100 MB). `npm run studio` opens Remotion Studio for live previews.
+
+How it fits together: ElevenLabs returns the audio plus the exact time of every character, so scene changes land on the words they belong to and the captions highlight the spoken word. Colours come from the client's detected brand colours, so each client's videos match their site.

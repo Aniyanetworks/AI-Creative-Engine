@@ -7,7 +7,15 @@ const byName = Object.fromEntries(wf.nodes.map((n) => [n.name, n]));
 
 const hooks = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, angle: 'a' + i, hook: 'hook ' + i }));
 const statics = Array.from({ length: 20 }, (_, i) => ({ aspect: i % 2 ? '9:16' : '1:1', style: 's', overlay_text: 'o', headline: 'h', primary_text: 'p\nq', cta: 'Learn More', image_prompt: 'img' }));
-const videos = Array.from({ length: 5 }, (_, i) => ({ id: i + 1, title: 't', format: 'f', spoken_script: 'words', captions: ['c'], cta: 'x' }));
+const scenes = [
+  { kind: 'hook', vo: 'Stop wasting hours on manual work.', headline: 'Stop wasting hours', highlight: 'hours', sub: '', icon: 'clock' },
+  { kind: 'point', vo: 'We automate your CRM and follow-ups.', headline: 'Automate your CRM', highlight: 'NOT-IN-HEADLINE', sub: 'No new tools', icon: 'bolt' },
+  { kind: 'cta', vo: 'Book a free thirty minute call.', headline: 'Book a free call', highlight: 'free', sub: '', icon: 'bogus-icon' },
+];
+// videos 1-4 carry a storyboard; video 5 only a plain script (exercises the fallback).
+const videos = Array.from({ length: 5 }, (_, i) => (i < 4
+  ? { id: i + 1, title: 't', format: 'f', scenes, cta: 'x' }
+  : { id: i + 1, title: 't', format: 'f', spoken_script: 'Stop wasting hours. We automate it for you. Book a free call today.', cta: 'Book a free call' }));
 
 let briefUserMsg = '';
 function claudeMock(req) {
@@ -118,6 +126,12 @@ async function run(body, maxImages, failImageIds = []) {
   check('render run: failed one is flagged', /failed/.test(real.final.statics[2].image_status));
   check('render run: beyond max_images marked skipped', /max_images/.test(real.final.statics[10].image_status));
   check('render run: Drive link format', /^https:\/\/drive\.google\.com\/file\/d\//.test(real.final.statics[0].image_url));
+  const v = real.final.videos;
+  check('storyboard: scenes kept, voiceover rebuilt from scene lines', v[0].scenes.length === 3 && v[0].spoken_script === scenes.map((x) => x.vo).join(' '));
+  check('storyboard: highlight not in headline is dropped, valid one kept', v[0].scenes[1].highlight === '' && v[0].scenes[0].highlight === 'hours');
+  check('storyboard: unknown icon falls back to a safe one', v[0].scenes[2].icon === 'star');
+  check('storyboard: plain script becomes scenes (first hook, last cta)', v[4].scenes.length === 3 && v[4].scenes[0].kind === 'hook' && v[4].scenes[2].kind === 'cta');
+  check('videos are marked storyboard-ready', /storyboard ready/.test(v[0].video_status));
   check('report has business name', real.final.report_markdown.includes('# Ad Pack: Test Co'));
   console.log(ok ? '\nALL PASS' : '\nSOME FAILED');
   process.exit(ok ? 0 : 1);

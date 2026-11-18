@@ -32,3 +32,9 @@ Thumbs.db
 
 # Netlify local state
 .netlify/
+
+# Video renderer: dependencies, generated audio/sfx and finished videos stay local
+video/node_modules/
+video/out/
+video/public/audio/
+video/public/sfx/
