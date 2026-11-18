@@ -9,17 +9,7 @@
 
 [functions]
   directory = "netlify/functions"   # relative to base
-  node_bundler = "nft"          # ships node_modules as-is; the safest mode for an Express app
+  node_bundler = "nft"              # ships node_modules as-is; avoids bundling CommonJS packages into an ES module
 
-# API requests go to the single function. basePath in api.mjs strips the function prefix.
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/api/api/:splat"
-  status = 200
-  force = true
-
-# Single-page app fallback
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# The API function claims /api/* itself (export const config in api.mjs), so no redirects are needed.
+# The app has no client-side routes, so there is no single-page-app fallback rule either.

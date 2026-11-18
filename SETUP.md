@@ -96,7 +96,7 @@ With Supabase configured, the app requires sign-in (Supabase Auth, email + passw
 - Database: `supabase/schema.sql` includes the extra table (`ace_profiles`) and `user_id` column; it is safe to re-run.
 
 ## Deploying to Netlify
-Netlify serves the React app from its CDN and runs the backend as one Netlify Function (`app/netlify/functions/api.cjs`, wrapping the same Express app). A scheduled function (`sync.mjs`, every minute) finishes unfinished runs even when nobody has the page open. Config lives in `netlify.toml` and overrides the Netlify UI fields (Base `app`, Build `npm run build`, Publish `dist`, Functions `netlify/functions`).
+Netlify serves the React app from its CDN and runs the backend as one Netlify Function (`app/netlify/functions/api.mjs`, wrapping the same Express app). A scheduled function (`sync.mjs`, every minute) finishes unfinished runs even when nobody has the page open. Config lives in `netlify.toml` and overrides the Netlify UI fields (Base `app`, Build `npm run build`, Publish `dist`, Functions `netlify/functions`).
 
 1. Push the repo to GitHub, then in Netlify: Add new site > Import from Git > pick the repo, branch `main`. Leave the build fields as they are (or fill the values above).
 2. Site configuration > Environment variables. Add these (mark the secret ones as **Secret**):
