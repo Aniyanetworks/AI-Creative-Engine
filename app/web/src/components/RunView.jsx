@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Globe, FileText, ScanSearch, Lightbulb, Image as ImageIcon, Clapperboard, Video, Package, Check, Loader2, AlertTriangle, Minus, Clock } from 'lucide-react';
 import { api } from '../api.js';
 import Results from './Results.jsx';
+import RerunButton from './RerunButton.jsx';
 import { RunSkeleton } from './Skeletons.jsx';
 
 const ICONS = { site: Globe, brief: FileText, competitors: ScanSearch, hooks: Lightbulb, statics: ImageIcon, images: ImageIcon, scripts: Clapperboard, videos: Video, pack: Package };
@@ -32,7 +33,7 @@ function Dot({ state, Icon }) {
   return <span className="sdot"><Icon size={12} /></span>;
 }
 
-export default function RunView({ id, onFinished }) {
+export default function RunView({ id, onFinished, onRerun }) {
   const [job, setJob] = useState(null);
   const [err, setErr] = useState('');
   const [elapsed, setElapsed] = useState(0);
@@ -81,10 +82,13 @@ export default function RunView({ id, onFinished }) {
             <h2>{title}</h2>
             <p className="url">{hostOf(job.url)}{job.options && job.options.dryRun ? ' · dry run' : ''}</p>
           </div>
-          <span className={'pill ' + (job.status === 'success' ? 'ok' : job.status === 'error' ? 'bad' : 'accent')}>
+          <div className="row gap" style={{ alignItems: 'center' }}>
+            <span className={'pill ' + (job.status === 'success' ? 'ok' : job.status === 'error' ? 'bad' : 'accent')}>
             {job.status === 'success' ? <Check size={13} strokeWidth={3} /> : job.status === 'error' ? <AlertTriangle size={13} /> : <Clock size={13} />}
             {job.status === 'success' ? 'Finished' : job.status === 'error' ? 'Failed' : 'Running · ' + mmss(elapsed)}
           </span>
+            {job.status !== 'running' && job.status !== 'queued' && onRerun ? <RerunButton job={job} onStarted={onRerun} primary={job.status === 'error'} /> : null}
+          </div>
         </div>
 
         <div className={'bar' + (job.status === 'success' ? ' done' : job.status === 'error' ? ' fail' : '')} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: pct + '%' }} /></div>
@@ -121,7 +125,7 @@ export default function RunView({ id, onFinished }) {
         {running && <p className="note" style={{ marginTop: 16 }}>A dry run takes about 3–4 minutes. You can leave this page; the run continues in n8n and stays in the list on the left.</p>}
       </section>
 
-      {job.status === 'success' && job.result && <Results pack={job.result} />}
+      {job.status === 'success' && job.result && <Results pack={job.result} jobId={job.id} />}
     </>
   );
 }

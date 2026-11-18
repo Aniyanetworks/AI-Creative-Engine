@@ -66,6 +66,7 @@ export const api = {
   listJobs: () => call('/jobs'),
   getJob: (id) => call('/jobs/' + id),
   removeJob: (id) => call('/jobs/' + id, { method: 'DELETE' }),
+  rerunJob: (id, body) => call('/jobs/' + id + '/rerun', { method: 'POST', body: body || {} }),
   listUsers: () => call('/admin/users'),
   approveUser: (id) => call('/admin/users/' + id + '/approve', { method: 'POST' }),
   revokeUser: (id) => call('/admin/users/' + id + '/revoke', { method: 'POST' }),

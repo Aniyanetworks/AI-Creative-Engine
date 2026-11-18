@@ -56,6 +56,14 @@ function Main({ me, onSignOut }) {
     } catch (e) { setStatusErr(e.message); }
   };
 
+  // Quick re-run from the sidebar: dry runs restart straight away; paid runs open the run page so the cost choice is explicit.
+  const rerunFromList = async (job) => {
+    if (!(job.options && job.options.dryRun)) { setActiveId(job.id); return; }
+    try { const { id } = await api.rerunJob(job.id); await refreshJobs(); setActiveId(id); }
+    catch (e) { setStatusErr(e.message); }
+  };
+  const afterRerun = async (id) => { await refreshJobs(); setActiveId(id); };
+
   const wf = status && status.workflow;
   const ready = !!(status && status.n8n && wf && wf.active);
   const special = activeId === USERS || activeId === ACCOUNT;
@@ -66,7 +74,7 @@ function Main({ me, onSignOut }) {
       <aside className="side">
         <div className="brand"><span className="logo" aria-hidden><Sparkles size={15} /></span> Creative Engine</div>
         <button className={'newbtn' + (activeId === null ? ' off' : '')} onClick={() => setActiveId(null)}><Plus size={16} /> New run</button>
-        <History jobs={jobs} loading={jobsLoading} activeId={runId} onPick={setActiveId} onRemove={removeRun} />
+        <History jobs={jobs} loading={jobsLoading} activeId={runId} onPick={setActiveId} onRemove={removeRun} onRerun={rerunFromList} />
         <div className="side-foot">
           {me.isAdmin && me.authEnabled && (
             <button className={'themebtn' + (activeId === USERS ? ' on' : '')} onClick={() => setActiveId(USERS)}>
@@ -108,7 +116,7 @@ function Main({ me, onSignOut }) {
         {activeId === USERS ? <Users myEmail={me.email} />
           : activeId === ACCOUNT ? <Account me={me} onSignOut={onSignOut} />
           : activeId === null ? <RunForm disabled={!ready} onStarted={async (id) => { await refreshJobs(); setActiveId(id); }} />
-          : <RunView key={activeId} id={activeId} onFinished={refreshJobs} />}
+          : <RunView key={activeId} id={activeId} onFinished={refreshJobs} onRerun={afterRerun} />}
       </main>
     </div>
   );

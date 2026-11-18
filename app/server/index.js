@@ -97,7 +97,7 @@ const firstJson = (runData, node) => {
 };
 
 function summarise(job, exec) {
-  const out = { id: job.id, url: job.url, businessName: job.businessName || '', createdAt: job.createdAt, options: job.options || {}, executionId: job.executionId || null };
+  const out = { id: job.id, url: job.url, businessName: job.businessName || '', createdAt: job.createdAt, options: publicOptions(job.options), executionId: job.executionId || null };
   const runData = exec && exec.data && exec.data.resultData && exec.data.resultData.runData;
   const done = new Set(Object.keys(runData || {}).filter((n) => runData[n] && runData[n].length && !runData[n][0].error));
   const status = !exec ? 'queued' : exec.finished && exec.status === 'success' ? 'success'
@@ -141,7 +141,7 @@ async function findExecution(job) {
 
 // Rebuilds the API shape from a finished run saved in the database.
 const fromStored = (job) => ({
-  id: job.id, url: job.url, businessName: job.businessName || '', createdAt: job.createdAt, options: job.options || {},
+  id: job.id, url: job.url, businessName: job.businessName || '', createdAt: job.createdAt, options: publicOptions(job.options),
   executionId: job.executionId || null, status: job.status, stages: job.stages || [], result: job.result || undefined,
   error: job.error || undefined, failedNode: job.failedNode || undefined,
 });
@@ -269,38 +269,63 @@ for (const [route, action] of [['activate', 'activate'], ['deactivate', 'deactiv
   });
 }
 
-app.post('/api/jobs', authenticate, approved, async (req, res) => {
-  try {
-    const b = req.body || {};
-    let u;
-    try { u = new URL(String(b.url || '').trim()); } catch { return res.status(400).json({ error: 'Enter a full website address, e.g. https://example.com' }); }
-    if (!['http:', 'https:'].includes(u.protocol)) return res.status(400).json({ error: 'Only http(s) addresses are allowed.' });
-    if (!webhookPath) return res.status(500).json({ error: 'The n8n webhook path is not set. Set N8N_WEBHOOK_PATH (on Netlify) or run tools/build_workflow.js locally.' });
-    const wf = await getWorkflow();
-    if (!wf.active) return res.status(409).json({ error: 'The workflow is inactive. Activate it first (button at the top).' });
+const publicOptions = (o) => { const { competitorNotes, ...rest } = o || {}; return { ...rest, hasNotes: !!competitorNotes }; };
 
-    if (AUTH_ON && !req.user.isAdmin) {
-      const mine = (await store.list({ userId: req.user.id })).filter((j) => !FINAL.has(j.status));
-      if (mine.length >= 2) return res.status(429).json({ error: 'You already have 2 runs in progress. Wait for one to finish.' });
-    }
-    const clamp = (v, max) => Math.max(0, Math.min(max, parseInt(v, 10) || 0));
-    const options = { dryRun: !!b.dryRun, maxImages: clamp(b.maxImages, 20), maxVideos: clamp(b.maxVideos, 5) };
-    const job = { id: crypto.randomBytes(6).toString('hex'), url: u.href, businessName: String(b.businessName || '').slice(0, 120), createdAt: new Date().toISOString(), options, executionId: null, userId: req.user.id };
-    const body = {
-      url: job.url, business_name: job.businessName, competitor_notes: String(b.competitorNotes || '').slice(0, 20000),
-      dry_run: options.dryRun, max_images: options.maxImages, max_videos: options.maxVideos, job_id: job.id,
-    };
-    const r = await fetch(N8N_BASE + '/webhook/' + webhookPath, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
-    if (!r.ok) return res.status(502).json({ error: 'n8n webhook answered HTTP ' + r.status + '. Is the workflow active?' });
-    await store.insert({ ...job, status: 'running' });
-    res.json({ id: job.id });
+// Starts a run through the n8n webhook and records it. Shared by "new run" and "run again".
+const httpError = (status, message) => Object.assign(new Error(message), { status });
+async function launchJob(user, input) {
+  let u;
+  try { u = new URL(String(input.url || '').trim()); } catch { throw httpError(400, 'Enter a full website address, e.g. https://example.com'); }
+  if (!['http:', 'https:'].includes(u.protocol)) throw httpError(400, 'Only http(s) addresses are allowed.');
+  if (!webhookPath) throw httpError(500, 'The n8n webhook path is not set. Set N8N_WEBHOOK_PATH (on Netlify) or run tools/build_workflow.js locally.');
+  const wf = await getWorkflow();
+  if (!wf.active) throw httpError(409, 'The workflow is inactive. Activate it first (button at the top).');
+
+  if (AUTH_ON && !user.isAdmin) {
+    const mine = (await store.list({ userId: user.id })).filter((j) => !FINAL.has(j.status));
+    if (mine.length >= 2) throw httpError(429, 'You already have 2 runs in progress. Wait for one to finish.');
+  }
+  const clamp = (v, max) => Math.max(0, Math.min(max, parseInt(v, 10) || 0));
+  const notes = String(input.competitorNotes || '').slice(0, 20000);
+  // competitorNotes is kept with the run so "run again" can reuse it (it is not sent back in the run list).
+  const options = { dryRun: !!input.dryRun, maxImages: clamp(input.maxImages, 20), maxVideos: clamp(input.maxVideos, 5), ...(notes ? { competitorNotes: notes } : {}) };
+  const job = { id: crypto.randomBytes(6).toString('hex'), url: u.href, businessName: String(input.businessName || '').slice(0, 120), createdAt: new Date().toISOString(), options, executionId: null, userId: user.id };
+  const body = {
+    url: job.url, business_name: job.businessName, competitor_notes: notes,
+    dry_run: options.dryRun, max_images: options.maxImages, max_videos: options.maxVideos, job_id: job.id,
+  };
+  const r = await fetch(N8N_BASE + '/webhook/' + webhookPath, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+  if (!r.ok) throw httpError(502, 'n8n webhook answered HTTP ' + r.status + '. Is the workflow active?');
+  await store.insert({ ...job, status: 'running' });
+  return job.id;
+}
+
+app.post('/api/jobs', authenticate, approved, async (req, res) => {
+  try { res.json({ id: await launchJob(req.user, req.body || {}) }); }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// Run again: same website and settings, as a brand-new run (the old run is left untouched).
+// Optional body: { dryRun, maxImages, maxVideos } to change how much is generated.
+app.post('/api/jobs/:id/rerun', authenticate, approved, async (req, res) => {
+  try {
+    const old = await store.get(req.params.id);
+    if (!old || !ownsJob(req.user, old)) return res.status(404).json({ error: 'Unknown job' });
+    const o = old.options || {};
+    const b = req.body || {};
+    const pickOpt = (k) => (b[k] !== undefined ? b[k] : o[k]);
+    const id = await launchJob(req.user, {
+      url: old.url, businessName: old.businessName, competitorNotes: o.competitorNotes,
+      dryRun: pickOpt('dryRun'), maxImages: pickOpt('maxImages'), maxVideos: pickOpt('maxVideos'),
+    });
+    res.json({ id });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 app.get('/api/jobs', authenticate, approved, async (req, res) => {
   try {
     const rows = await store.list(AUTH_ON && !req.user.isAdmin ? { userId: req.user.id } : {});
-    res.json(rows.map((j) => ({ id: j.id, url: j.url, businessName: j.businessName, createdAt: j.createdAt, options: j.options, status: j.status || 'running' })));
+    res.json(rows.map((j) => ({ id: j.id, url: j.url, businessName: j.businessName, createdAt: j.createdAt, options: publicOptions(j.options), status: j.status || 'running' })));
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square } from 'lucide-react';
+import { Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard } from 'lucide-react';
 
 const TABS = ['Hooks', 'Static ads', 'Videos', 'Brief', 'Competitors', 'Report'];
 const TAB_ICON = { Hooks: Lightbulb, 'Static ads': ImageIcon, Videos: Video, Brief: FileText, Competitors: Swords, Report: ClipboardList };
@@ -91,20 +91,48 @@ function Statics({ pack }) {
   );
 }
 
-function Videos({ pack }) {
+const KIND = { hook: 'Hook', point: 'Point', proof: 'Proof', cta: 'Call to action' };
+
+function Videos({ pack, jobId }) {
+  const videos = pack.videos || [];
+  const hasBoards = videos.some((v) => (v.scenes || []).length);
+  const cmd = 'cd video\nnode render.mjs ' + (jobId || '<run id>');
   return (
-    <div className="cards" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
-      {(pack.videos || []).map((v) => (
-        <article key={v.id} className="vid">
-          <div className="row between"><span className="tag" style={{ margin: 0 }}>{v.format}</span>
-            <span className={'pill small ' + (v.video_url ? 'ok' : '')}>{v.video_url ? 'Rendered' : /script only/.test(v.video_status || '') ? 'Script only' : v.video_status}</span></div>
-          <h2 style={{ fontSize: 16 }}>{v.title}</h2>
-          <div className="script">{v.spoken_script}</div>
-          <p className="muted small">Captions: {(v.captions || []).join(' · ')}</p>
-          <div className="row gap"><CopyBtn text={v.spoken_script} label="Copy script" />{v.video_url && <a className="ghost" href={v.video_url} target="_blank" rel="noreferrer">Open video <ExternalLink size={13} /></a>}</div>
-        </article>
-      ))}
-    </div>
+    <>
+      {hasBoards && (
+        <div className="renderbox">
+          <div className="row gap" style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+            <span className="tile solid"><Clapperboard size={18} /></span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <b style={{ display: 'block' }}>Render these 5 videos on your computer</b>
+              <span className="muted small">Claude wrote the storyboard below. Run this in the project folder to turn it into MP4s with animated text, brand colors, captions and an ElevenLabs voiceover. Needs <code>ELEVENLABS_API_KEY</code> in <code>.env</code> (without it you get silent videos with captions).</span>
+              <pre className="cmd">{cmd}</pre>
+              <div className="row gap"><CopyBtn text={cmd} label="Copy command" /><span className="note">Videos are saved in video/out/{jobId || '<run id>'}/</span></div>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="cards" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
+        {videos.map((v) => (
+          <article key={v.id} className="vid">
+            <div className="row between"><span className="tag" style={{ margin: 0 }}>{v.format}</span>
+              <span className={'pill small ' + (v.video_url ? 'ok' : '')}>{v.video_url ? 'Rendered' : /storyboard|script only/.test(v.video_status || '') ? 'Storyboard ready' : v.video_status}</span></div>
+            <h2 style={{ fontSize: 16 }}>{v.title}</h2>
+            {(v.scenes || []).length ? (
+              <ol className="storyboard">
+                {v.scenes.map((s, i) => (
+                  <li key={i}>
+                    <span className="sb-n">{i + 1}</span>
+                    <div><b>{s.headline}</b><span className="sb-kind">{KIND[s.kind] || s.kind}{s.sub ? ' · ' + s.sub : ''}</span><em>{s.vo}</em></div>
+                  </li>
+                ))}
+              </ol>
+            ) : <div className="script">{v.spoken_script}</div>}
+            <div className="row gap"><CopyBtn text={v.spoken_script} label="Copy voiceover script" />{v.primary_text && <CopyBtn text={v.primary_text} label="Copy ad caption" />}{v.video_url && <a className="ghost" href={v.video_url} target="_blank" rel="noreferrer">Open video <ExternalLink size={13} /></a>}</div>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -159,7 +187,7 @@ function Report({ pack }) {
   );
 }
 
-export default function Results({ pack }) {
+export default function Results({ pack, jobId }) {
   const [tab, setTab] = useState('Hooks');
   const st = pack.stats || {};
   const Body = { Hooks, 'Static ads': Statics, Videos, Brief, Competitors, Report }[tab];
@@ -188,7 +216,7 @@ export default function Results({ pack }) {
             </button>
           ))}
         </div>
-        <Body pack={pack} />
+        <Body pack={pack} jobId={jobId} />
       </section>
     </>
   );

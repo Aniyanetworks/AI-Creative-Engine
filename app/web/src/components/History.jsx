@@ -1,5 +1,5 @@
 import React from 'react';
-import { Globe, X, History as HistoryIcon } from 'lucide-react';
+import { Globe, X, RotateCw, History as HistoryIcon } from 'lucide-react';
 import { SidebarSkeleton } from './Skeletons.jsx';
 
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
@@ -12,7 +12,7 @@ function groupOf(iso) {
   return diff <= 0 ? 'Today' : diff === 1 ? 'Yesterday' : 'Earlier';
 }
 
-export default function History({ jobs, loading, activeId, onPick, onRemove }) {
+export default function History({ jobs, loading, activeId, onPick, onRemove, onRerun }) {
   if (loading) return <SidebarSkeleton />;
   if (!jobs.length) {
     return (
@@ -40,6 +40,7 @@ export default function History({ jobs, loading, activeId, onPick, onRemove }) {
                     <span className="run-meta">{time(j.createdAt)}{j.options && j.options.dryRun ? ' · Dry run' : j.options && j.options.maxImages > 1 ? ' · Full run' : j.options ? ' · Image test' : ''}</span>
                   </span>
                 </button>
+                <button className="rm rr" onClick={() => onRerun(j)} aria-label={'Run ' + name + ' again'} title={j.options && j.options.dryRun ? 'Run again' : 'Run again (opens the run to choose)'}><RotateCw size={13} /></button>
                 <button className="rm" onClick={() => onRemove(j)} aria-label={'Remove run ' + name} title="Remove from list"><X size={14} /></button>
               </div>
             );
