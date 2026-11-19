@@ -7,6 +7,7 @@
 //
 // Options:  --only 1,3     only these video numbers      --no-voice   silent videos with captions
 //           --stills 20,90 also save PNG stills at these frames (to inspect the design)
+//           --require-voice  fail instead of rendering silent videos when ELEVENLABS_API_KEY is missing (used in the cloud)
 //           --stills-only  with --stills: skip rendering the video (fast design check)
 //           --out <dir>    output folder (default video/out/<run>)      --crf 18   quality (lower = better)
 //
@@ -95,6 +96,7 @@ const todo = videos.filter((v) => !only || only.includes(v.n));
 const brief = pack.brief || {};
 const brand = { name: pack.business || brief.business_name || 'Your brand', colors: brief.brand_colors || [] };
 
+if (flag('require-voice') && !pick('ELEVENLABS_API_KEY')) throw new Error('ELEVENLABS_API_KEY is missing, so the videos would have no voiceover. Add it (for cloud renders: GitHub repository secret ELEVENLABS_API_KEY).');
 const wantVoice = !flag('no-voice') && !flag('demo') && !!pick('ELEVENLABS_API_KEY');
 if (!flag('no-voice') && !flag('demo') && !wantVoice) log('No ELEVENLABS_API_KEY in ../.env: rendering silent videos with captions.\n');
 

@@ -131,3 +131,20 @@ node render.mjs --demo           # sample video, checks rendering works on this 
 Options: `--only 1,3` (some videos), `--no-voice` (silent with captions), `--stills 20,90` (also save PNG frames to inspect the design), `--crf 18` (quality). Videos land in `video/out/<run>/`. The first run downloads a headless Chrome (about 100 MB). `npm run studio` opens Remotion Studio for live previews.
 
 How it fits together: ElevenLabs returns the audio plus the exact time of every character, so scene changes land on the words they belong to and the captions highlight the spoken word. Colours come from the client's detected brand colours, so each client's videos match their site.
+
+### Rendering videos online (GitHub Actions)
+Instead of running `node render.mjs` yourself, the app can render the videos in the cloud, for free, on GitHub's runners. The five videos render in parallel (about 5 to 8 minutes), then appear in the run's **Videos** tab with a player and a download button.
+
+How it works: the app calls the GitHub API to start `.github/workflows/render-videos.yml`. The workflow loads the run from Supabase, renders each video (ElevenLabs voiceover, Remotion), uploads the MP4s to a private Supabase Storage bucket (`ace-videos`, created automatically) and writes `<run id>/status.json`. The app reads that file and hands the browser short-lived signed links, so videos are never public. No database change is needed.
+
+**When it runs:** automatically when a **full run** finishes (it renders the 5 videos), and on demand with the **Render videos online** button for dry runs and image tests. Each render uses roughly 2,500 ElevenLabs credits, which is why dry runs don't render by themselves. An automatic trigger never restarts a failed render; only the button does.
+
+One-time setup (about 5 minutes):
+1. **Push the repo** so `.github/workflows/render-videos.yml` is on `main`.
+2. **GitHub secrets.** Put `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and `ELEVENLABS_API_KEY` in your local `.env`, then run `node video/ci/set-secrets.mjs` (needs the GitHub CLI, `gh auth login`). It copies them into the repository's secrets without printing them. Or add them by hand: repo > Settings > Secrets and variables > Actions. Optionally add a repository *variable* `ELEVENLABS_VOICE_ID`.
+3. **A token for the app to start the workflow.** GitHub > Settings > Developer settings > Fine-grained tokens > Generate: *Only select repositories* > this repo, permission **Actions: Read and write**. Put it in `.env` as `GH_DISPATCH_TOKEN=` and add the same variable on Netlify (mark it Secret). Without it the Videos tab keeps showing the "render on your computer" command.
+4. Restart `npm run dev` (and redeploy Netlify).
+
+Troubleshooting: the Videos tab shows the failure reason and a link to the GitHub Actions log. To run it by hand: GitHub > Actions > *Render videos* > Run workflow > paste the run id. A render that has not finished after 45 minutes is reported as failed. Videos over 50 MB are refused by Supabase's free plan; lower the quality in `render.mjs` (`--crf`) if that ever happens.
+
+Tests: `node tools/test_render.mjs` (40 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).

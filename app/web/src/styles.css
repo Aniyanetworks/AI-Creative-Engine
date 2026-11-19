@@ -290,3 +290,10 @@ section.card > .urow:first-child { border-top: 0; }
 .rerun-pop b { display: block; font-size: 14px; } .rerun-pop em { display: block; font-style: normal; font-size: 12px; color: var(--muted); }
 .rerun-pop .rerun-x { color: var(--muted); align-items: center; } .rerun-pop .rerun-x svg { margin-top: 0; }
 .rerun-err { color: var(--bad); font-size: 12px; max-width: 260px; }
+
+/* ---------- online render panel + players ---------- */
+.renderbox.good { background: var(--ok-soft); } .renderbox.bad { background: var(--bad-soft); }
+.renderbox summary { cursor: pointer; font-size: 13px; color: var(--muted); width: fit-content; }
+.tile.okt { background: var(--ok); color: #fff; } .tile.badt { background: var(--bad); color: #fff; }
+.player { display: grid; gap: 8px; justify-items: start; }
+.player video { width: 100%; max-height: 440px; aspect-ratio: 9 / 16; object-fit: contain; background: #000; border-radius: var(--r-sm); }

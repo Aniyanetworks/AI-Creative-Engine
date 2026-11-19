@@ -11,6 +11,8 @@ import os from 'os';
 import { fileURLToPath } from 'url';
 import { createSupabaseStore, createLocalStore } from './store.js';
 import { createAuth, rateLimiter } from './auth.js';
+import { createStorage } from './storage.js';
+import { createRenderer } from './render.js';
 
 dns.setDefaultResultOrder('ipv4first');
 if (net.setDefaultAutoSelectFamilyAttemptTimeout) net.setDefaultAutoSelectFamilyAttemptTimeout(5000);
@@ -51,6 +53,13 @@ const FINAL = new Set(['success', 'error']);
 // ---- accounts: Supabase Auth + admin approval (only when Supabase storage is configured) ----
 const SUPABASE_PUBLISHABLE = pick('SUPABASE_PUBLISHABLE_KEY');
 const ADMIN_EMAILS = pick('ADMIN_EMAILS').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+// ---- online video rendering (GitHub Actions + Supabase Storage); active when GH_DISPATCH_TOKEN is set ----
+const storage = store.kind === 'supabase' ? createStorage(SUPABASE_URL, SUPABASE_KEY, pick('VIDEO_BUCKET') || 'ace-videos') : null;
+const renderer = createRenderer({
+  storage, token: pick('GH_DISPATCH_TOKEN'), repo: pick('GITHUB_REPO') || 'Aniyanetworks/AI-Creative-Engine',
+  ref: pick('GITHUB_REF') || 'main', apiBase: pick('GITHUB_API_URL') || 'https://api.github.com',
+});
+
 const AUTH_ON = store.kind === 'supabase' && pick('AUTH_REQUIRED').toLowerCase() !== 'false';
 const auth = AUTH_ON ? createAuth({ supabaseUrl: SUPABASE_URL, apiKey: SUPABASE_PUBLISHABLE || SUPABASE_KEY }) : null;
 
@@ -159,6 +168,9 @@ async function refreshJob(job) {
   }
   if (FINAL.has(out.status)) {
     await store.update(job.id, { status: out.status, stages: out.stages, result: out.result || null, error: out.error || null, failedNode: out.failedNode || null, finishedAt: new Date().toISOString() });
+    if (out.status === 'success' && renderer.shouldAuto(job, out.result)) {
+      try { await renderer.dispatch(job.id, { by: 'auto' }); } catch (e) { console.error('Automatic video render could not start for run ' + job.id + ': ' + e.message); }
+    }
   } else if (job.status !== out.status) {
     await store.update(job.id, { status: out.status });
   }
@@ -344,6 +356,35 @@ app.get('/api/jobs/:id', authenticate, approved, async (req, res) => {
     const job = await store.get(req.params.id);
     if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
     res.json(await refreshJob(job));
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// ---- online video rendering ----
+async function ownedJob(req, res) {
+  const job = await store.get(req.params.id);
+  if (!job || !ownsJob(req.user, job)) { res.status(404).json({ error: 'Unknown job' }); return null; }
+  return job;
+}
+
+// Render state and signed links for this run's finished videos.
+app.get('/api/jobs/:id/videos', authenticate, approved, async (req, res) => {
+  try {
+    const job = await ownedJob(req, res);
+    if (job) res.json(await renderer.status(job.id));
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// "Render videos online" button (also used to render again).
+app.post('/api/jobs/:id/render-videos', authenticate, approved, async (req, res) => {
+  try {
+    const job = await ownedJob(req, res);
+    if (!job) return;
+    if (!renderer.configured) return res.status(409).json({ error: 'Online rendering is not set up yet. Add GH_DISPATCH_TOKEN (see SETUP.md), or render on your computer with the command shown.' });
+    if (job.status !== 'success' || !job.result) return res.status(409).json({ error: 'Wait until the run has finished.' });
+    if (!(job.result.videos || []).some((v) => (v.scenes || []).length)) return res.status(409).json({ error: 'This run has no video storyboards (it came from an older workflow version). Run it again.' });
+    const r = await renderer.dispatch(job.id, { by: req.user.email || 'user', force: true });
+    if (!r.started) return res.status(409).json({ error: r.reason === 'in-progress' ? 'A render is already in progress for this run.' : 'Could not start the render.' });
+    res.json({ ok: true });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 

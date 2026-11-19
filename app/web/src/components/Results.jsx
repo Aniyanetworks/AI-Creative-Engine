@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { api } from '../api.js';
+import { Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
 
 const TABS = ['Hooks', 'Static ads', 'Videos', 'Brief', 'Competitors', 'Report'];
 const TAB_ICON = { Hooks: Lightbulb, 'Static ads': ImageIcon, Videos: Video, Brief: FileText, Competitors: Swords, Report: ClipboardList };
@@ -93,44 +94,144 @@ function Statics({ pack }) {
 
 const KIND = { hook: 'Hook', point: 'Point', proof: 'Proof', cta: 'Call to action' };
 
+// Render state for this run's videos (GitHub Actions renders them and uploads the MP4s).
+function useRender(jobId) {
+  const [st, setSt] = useState(null);
+  const [err, setErr] = useState('');
+  const load = useCallback(async () => {
+    if (!jobId) return;
+    try { setSt(await api.getVideos(jobId)); setErr(''); } catch (e) { setErr(e.message); }
+  }, [jobId]);
+  useEffect(() => { load(); }, [load]);
+  const active = st && (st.status === 'queued' || st.status === 'rendering');
+  useEffect(() => {
+    if (!active) return undefined;
+    const t = setInterval(load, 8000);
+    return () => clearInterval(t);
+  }, [active, load]);
+  return { st, err, reload: load };
+}
+
+function RenderPanel({ jobId, render }) {
+  const { st, err, reload } = render;
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [startErr, setStartErr] = useState('');
+  const cmd = 'cd video\nnode render.mjs ' + (jobId || '<run id>');
+
+  const start = async () => {
+    setBusy(true); setStartErr(''); setConfirm(false);
+    try { await api.renderVideos(jobId); await reload(); } catch (e) { setStartErr(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const Local = () => (
+    <details style={{ marginTop: 10 }}>
+      <summary>Or render on your computer instead</summary>
+      <pre className="cmd">{cmd}</pre>
+      <div className="row gap"><CopyBtn text={cmd} label="Copy command" /><span className="note">Saved in video/out/{jobId || '<run id>'}/. Needs ELEVENLABS_API_KEY in .env.</span></div>
+    </details>
+  );
+
+  if (!st && !err) return <div className="renderbox"><span className="muted small"><Loader2 size={14} className="rot" /> Checking video status…</span></div>;
+  if (err) return <div className="banner err"><AlertTriangle size={16} />{err}</div>;
+
+  if (!st.configured) {
+    return (
+      <div className="renderbox">
+        <div className="row gap" style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+          <span className="tile solid"><Clapperboard size={18} /></span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <b style={{ display: 'block' }}>Render these 5 videos on your computer</b>
+            <span className="muted small">Claude wrote the storyboard below. Run this in the project folder to turn it into MP4s with animated text, brand colors, captions and an ElevenLabs voiceover. Online rendering isn't set up yet (see SETUP.md).</span>
+            <pre className="cmd">{cmd}</pre>
+            <div className="row gap"><CopyBtn text={cmd} label="Copy command" /><span className="note">Saved in video/out/{jobId || '<run id>'}/</span></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const working = st.status === 'queued' || st.status === 'rendering';
+  return (
+    <div className={'renderbox' + (st.status === 'failed' ? ' bad' : st.status === 'done' ? ' good' : '')}>
+      <div className="row gap" style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+        <span className={'tile ' + (st.status === 'done' ? 'okt' : st.status === 'failed' ? 'badt' : 'solid')}>
+          {working ? <Loader2 size={18} className="rot" /> : st.status === 'done' ? <CheckCircle2 size={18} /> : st.status === 'failed' ? <AlertTriangle size={18} /> : <CloudUpload size={18} />}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {st.status === 'idle' && (<>
+            <b style={{ display: 'block' }}>Render these videos online</b>
+            <span className="muted small">GitHub renders all 5 videos with an ElevenLabs voiceover and brand-colored captions, in about 5 to 8 minutes. It uses roughly 2,500 ElevenLabs credits. Nothing runs on your computer.</span>
+          </>)}
+          {working && (<>
+            <b style={{ display: 'block' }}>{st.status === 'queued' ? 'Starting the render…' : 'Rendering your videos…'}</b>
+            <span className="muted small">This takes about 5 to 8 minutes. You can leave this page; the videos will be here when it finishes.{st.runUrl ? ' ' : ''}{st.runUrl && <a href={st.runUrl} target="_blank" rel="noreferrer">Watch progress on GitHub <ExternalLink size={12} /></a>}</span>
+          </>)}
+          {st.status === 'done' && (<>
+            <b style={{ display: 'block' }}>{st.videos.length} video{st.videos.length === 1 ? '' : 's'} ready</b>
+            <span className="muted small">Play them below or download the MP4s. The links stay valid for an hour, so reload the page for fresh ones.</span>
+          </>)}
+          {st.status === 'failed' && (<>
+            <b style={{ display: 'block' }}>The render didn't finish</b>
+            <span className="small">{st.message || 'Something went wrong.'}{st.runUrl && <> <a href={st.runUrl} target="_blank" rel="noreferrer">Open the log <ExternalLink size={12} /></a></>}</span>
+          </>)}
+          {startErr && <div className="banner err" style={{ marginTop: 10, marginBottom: 0 }}><AlertTriangle size={16} />{startErr}</div>}
+          {!working && (
+            <div className="row gap" style={{ marginTop: 12 }}>
+              {confirm ? (<>
+                <button className="btn" onClick={start} disabled={busy}>{busy ? <Loader2 size={14} className="rot" /> : null} Yes, render again (uses credits)</button>
+                <button className="ghost" onClick={() => setConfirm(false)}>Cancel</button>
+              </>) : (
+                <button className={st.status === 'idle' ? 'btn' : 'ghost'} onClick={() => (st.status === 'idle' ? start() : setConfirm(true))} disabled={busy}>
+                  {busy ? <Loader2 size={14} className="rot" /> : <Clapperboard size={14} />} {st.status === 'idle' ? 'Render videos online' : st.status === 'failed' ? 'Try again' : 'Render again'}
+                </button>
+              )}
+            </div>
+          )}
+          {!working && <Local />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Videos({ pack, jobId }) {
   const videos = pack.videos || [];
   const hasBoards = videos.some((v) => (v.scenes || []).length);
-  const cmd = 'cd video\nnode render.mjs ' + (jobId || '<run id>');
+  const render = useRender(hasBoards ? jobId : null);
+  const files = (render.st && render.st.videos) || [];
   return (
     <>
-      {hasBoards && (
-        <div className="renderbox">
-          <div className="row gap" style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
-            <span className="tile solid"><Clapperboard size={18} /></span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <b style={{ display: 'block' }}>Render these 5 videos on your computer</b>
-              <span className="muted small">Claude wrote the storyboard below. Run this in the project folder to turn it into MP4s with animated text, brand colors, captions and an ElevenLabs voiceover. Needs <code>ELEVENLABS_API_KEY</code> in <code>.env</code> (without it you get silent videos with captions).</span>
-              <pre className="cmd">{cmd}</pre>
-              <div className="row gap"><CopyBtn text={cmd} label="Copy command" /><span className="note">Videos are saved in video/out/{jobId || '<run id>'}/</span></div>
-            </div>
-          </div>
-        </div>
-      )}
+      {hasBoards && <RenderPanel jobId={jobId} render={render} />}
       <div className="cards" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
-        {videos.map((v) => (
-          <article key={v.id} className="vid">
-            <div className="row between"><span className="tag" style={{ margin: 0 }}>{v.format}</span>
-              <span className={'pill small ' + (v.video_url ? 'ok' : '')}>{v.video_url ? 'Rendered' : /failed|timed out/.test(v.video_status || '') ? v.video_status : (v.scenes || []).length ? 'Storyboard ready' : v.video_status}</span></div>
-            <h2 style={{ fontSize: 16 }}>{v.title}</h2>
-            {(v.scenes || []).length ? (
-              <ol className="storyboard">
-                {v.scenes.map((s, i) => (
-                  <li key={i}>
-                    <span className="sb-n">{i + 1}</span>
-                    <div><b>{s.headline}</b><span className="sb-kind">{KIND[s.kind] || s.kind}{s.sub ? ' · ' + s.sub : ''}</span><em>{s.vo}</em></div>
-                  </li>
-                ))}
-              </ol>
-            ) : <div className="script">{v.spoken_script}</div>}
-            <div className="row gap"><CopyBtn text={v.spoken_script} label="Copy voiceover script" />{v.primary_text && <CopyBtn text={v.primary_text} label="Copy ad caption" />}{v.video_url && <a className="ghost" href={v.video_url} target="_blank" rel="noreferrer">Open video <ExternalLink size={13} /></a>}</div>
-          </article>
-        ))}
+        {videos.map((v, i) => {
+          const file = files.find((f) => f.n === (v.id || i + 1));
+          return (
+            <article key={v.id} className="vid">
+              <div className="row between"><span className="tag" style={{ margin: 0 }}>{v.format}</span>
+                <span className={'pill small ' + (file || v.video_url ? 'ok' : '')}>{file || v.video_url ? 'Rendered' : /failed|timed out/.test(v.video_status || '') ? v.video_status : (v.scenes || []).length ? 'Storyboard ready' : v.video_status}</span></div>
+              <h2 style={{ fontSize: 16 }}>{v.title}</h2>
+              {file && (
+                <div className="player">
+                  <video src={file.url} controls playsInline preload="metadata" />
+                  <a className="ghost" href={file.downloadUrl}><Download size={13} /> Download MP4</a>
+                </div>
+              )}
+              {(v.scenes || []).length ? (
+                <ol className="storyboard">
+                  {v.scenes.map((s, k) => (
+                    <li key={k}>
+                      <span className="sb-n">{k + 1}</span>
+                      <div><b>{s.headline}</b><span className="sb-kind">{KIND[s.kind] || s.kind}{s.sub ? ' · ' + s.sub : ''}</span><em>{s.vo}</em></div>
+                    </li>
+                  ))}
+                </ol>
+              ) : <div className="script">{v.spoken_script}</div>}
+              <div className="row gap"><CopyBtn text={v.spoken_script} label="Copy voiceover script" />{v.primary_text && <CopyBtn text={v.primary_text} label="Copy ad caption" />}{v.video_url && <a className="ghost" href={v.video_url} target="_blank" rel="noreferrer">Open video <ExternalLink size={13} /></a>}</div>
+            </article>
+          );
+        })}
       </div>
     </>
   );
