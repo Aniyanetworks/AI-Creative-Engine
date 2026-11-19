@@ -301,3 +301,5 @@ section.card > .urow:first-child { border-top: 0; }
 .voicepick { display: grid; gap: 6px; margin-top: 12px; max-width: 460px; }
 .voicepick select, .voicepick input { width: 100%; }
 .voicepick audio { max-width: 220px; }
+.pickvid { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.pickvid input { width: 16px; height: 16px; accent-color: var(--accent); }

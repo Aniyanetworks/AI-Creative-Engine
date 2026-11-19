@@ -291,6 +291,21 @@ check('finish: a failed Drive copy leaves the videos as done and explains', st.s
 const wf = fs.readFileSync(path.join(root, '.github', 'workflows', 'render-videos.yml'), 'utf8');
 check('workflow: declares voice_id and drive_only inputs, the Drive secret, and a Drive-only job', /voice_id:/.test(wf) && /drive_only:/.test(wf) && /N8N_DRIVE_WEBHOOK_URL: \$\{\{ secrets\.N8N_DRIVE_WEBHOOK_URL \}\}/.test(wf) && /\n  drive:\n/.test(wf) && /inputs\.voice_id \|\| vars\.ELEVENLABS_VOICE_ID/.test(wf));
 
+// ---- choosing which videos to render ----
+runs.set('routerun0005', { status: 'success', result: { videos: [{ id: 1, scenes: [{ vo: 'a' }] }, { id: 2, scenes: [{ vo: 'b' }] }, { id: 3, scenes: [] }] } });
+x = await post('/api/jobs/routerun0005/render-videos', { only: [2, 'x'] });
+check('route: a malformed video selection is rejected', x.status === 400 && !github.calls.some((c) => c.body.inputs.run_id === 'routerun0005'), JSON.stringify(x));
+x = await post('/api/jobs/routerun0005/render-videos', { only: [3] });
+check('route: a video without a storyboard cannot be selected', x.status === 400 && /no storyboard/.test(x.json.error), JSON.stringify(x));
+x = await post('/api/jobs/routerun0005/render-videos', { only: [2, 1, 2] });
+const oc = github.calls.find((c) => c.body.inputs.run_id === 'routerun0005');
+check('route: the selection goes to the workflow sorted and de-duplicated', x.status === 200 && oc && oc.body.inputs.only === '1,2', JSON.stringify(oc));
+x = await api('GET', '/api/jobs/routerun0005/videos');
+check('route: the status remembers which videos were requested', Array.isArray(x.json.only) && x.json.only.join() === '1,2', JSON.stringify(x.json));
+runs.set('routerun0006', { status: 'success', result: { videos: [{ id: 1, scenes: [{ vo: 'a' }] }] } });
+await post('/api/jobs/routerun0006/render-videos', {});
+check('route: no selection means every video (empty "only")', github.calls.find((c) => c.body.inputs.run_id === 'routerun0006').body.inputs.only === '');
+
 srv.kill();
 
 server.close();

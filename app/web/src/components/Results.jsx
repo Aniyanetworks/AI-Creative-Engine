@@ -139,7 +139,11 @@ function VoicePicker({ value, onChange }) {
   );
 }
 
-function RenderPanel({ jobId, render }) {
+function RenderPanel({ jobId, render, ids, selected }) {
+  const n = selected.length;
+  const all = n === ids.length;
+  const what = all ? 'all ' + ids.length + ' videos' : n + ' of ' + ids.length + ' videos';
+  const credits = (n * 500).toLocaleString('en-US');
   const { st, err, reload } = render;
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -151,7 +155,7 @@ function RenderPanel({ jobId, render }) {
 
   const start = async () => {
     setBusy(true); setStartErr(''); setConfirm(false);
-    try { await api.renderVideos(jobId, voice); await reload(); } catch (e) { setStartErr(e.message); }
+    try { await api.renderVideos(jobId, voice, all ? [] : selected); await reload(); } catch (e) { setStartErr(e.message); }
     finally { setBusy(false); }
   };
 
@@ -198,7 +202,7 @@ function RenderPanel({ jobId, render }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           {st.status === 'idle' && (<>
             <b style={{ display: 'block' }}>Render these videos online</b>
-            <span className="muted small">GitHub renders all 5 videos with an ElevenLabs voiceover and brand-colored captions, in about 5 to 8 minutes. It uses roughly 2,500 ElevenLabs credits. Nothing runs on your computer.</span>
+            <span className="muted small">GitHub renders {what} with an ElevenLabs voiceover and brand-colored captions, in about 5 to 8 minutes. It uses roughly {credits} ElevenLabs credits. Nothing runs on your computer. {ids.length > 1 ? 'Tick the videos you want on the cards below.' : ''}</span>
             <VoicePicker value={voice} onChange={pickVoice} />
           </>)}
           {working && (<>
@@ -218,11 +222,11 @@ function RenderPanel({ jobId, render }) {
           {!working && (
             <div className="row gap" style={{ marginTop: 12 }}>
               {confirm ? (<>
-                <button className="btn" onClick={start} disabled={busy}>{busy ? <Loader2 size={14} className="rot" /> : null} Yes, render again (uses credits)</button>
+                <button className="btn" onClick={start} disabled={busy}>{busy ? <Loader2 size={14} className="rot" /> : null} Yes, render {what} again (about {credits} credits)</button>
                 <button className="ghost" onClick={() => setConfirm(false)}>Cancel</button>
               </>) : (
-                <button className={st.status === 'idle' ? 'btn' : 'ghost'} onClick={() => (st.status === 'idle' ? start() : setConfirm(true))} disabled={busy}>
-                  {busy ? <Loader2 size={14} className="rot" /> : <Clapperboard size={14} />} {st.status === 'idle' ? 'Render videos online' : st.status === 'failed' ? 'Try again' : 'Render again'}
+                <button className={st.status === 'idle' ? 'btn' : 'ghost'} onClick={() => (st.status === 'idle' ? start() : setConfirm(true))} disabled={busy || n === 0}>
+                  {busy ? <Loader2 size={14} className="rot" /> : <Clapperboard size={14} />} {st.status === 'idle' ? (all ? 'Render videos online' : 'Render ' + n + ' selected') : st.status === 'failed' ? 'Try again' : (all ? 'Render again' : 'Render ' + n + ' selected again')}
                 </button>
               )}
             </div>
@@ -244,16 +248,24 @@ function Videos({ pack, jobId }) {
   const videos = pack.videos || [];
   const hasBoards = videos.some((v) => (v.scenes || []).length);
   const render = useRender(hasBoards ? jobId : null);
+  const ids = videos.map((v, i) => ({ id: v.id || i + 1, ok: (v.scenes || []).length > 0 })).filter((x) => x.ok).map((x) => x.id);
+  const [sel, setSel] = useState(null); // null = every video
+  const selected = sel ? ids.filter((i) => sel.includes(i)) : ids;
+  const toggle = (id) => setSel(selected.includes(id) ? selected.filter((i) => i !== id) : [...selected, id]);
+  const busyNow = !!(render.st && (render.st.status === 'queued' || render.st.status === 'rendering'));
   const files = (render.st && render.st.videos) || [];
   return (
     <>
-      {hasBoards && <RenderPanel jobId={jobId} render={render} />}
+      {hasBoards && <RenderPanel jobId={jobId} render={render} ids={ids} selected={selected} />}
       <div className="cards" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
         {videos.map((v, i) => {
           const file = files.find((f) => f.n === (v.id || i + 1));
           return (
             <article key={v.id} className="vid">
               <div className="row between"><span className="tag" style={{ margin: 0 }}>{v.format}</span>
+                {hasBoards && ids.includes(v.id || i + 1) && ids.length > 1 && render.st && render.st.configured && (
+                  <label className="pickvid"><input type="checkbox" checked={selected.includes(v.id || i + 1)} disabled={busyNow} onChange={() => toggle(v.id || i + 1)} /> Render</label>
+                )}
                 <span className={'pill small ' + (file || v.video_url ? 'ok' : '')}>{file || v.video_url ? 'Rendered' : /failed|timed out/.test(v.video_status || '') ? v.video_status : (v.scenes || []).length ? 'Storyboard ready' : v.video_status}</span></div>
               <h2 style={{ fontSize: 16 }}>{v.title}</h2>
               {file && (

@@ -385,7 +385,12 @@ app.post('/api/jobs/:id/render-videos', authenticate, approved, async (req, res)
     if (!(job.result.videos || []).some((v) => (v.scenes || []).length)) return res.status(409).json({ error: 'This run has no video storyboards (it came from an older workflow version). Run it again.' });
     const voiceId = String((req.body && req.body.voiceId) || '').trim();
     if (voiceId && !isVoiceId(voiceId)) return res.status(400).json({ error: 'That does not look like an ElevenLabs voice id.' });
-    const r = await renderer.dispatch(job.id, { by: req.user.email || 'user', force: true, voiceId });
+    const rawOnly = req.body && req.body.only;
+    const only = Array.isArray(rawOnly) ? [...new Set(rawOnly.map(Number))].sort((a, b) => a - b) : [];
+    if (only.some((n) => !Number.isInteger(n) || n < 1 || n > 50)) return res.status(400).json({ error: 'Invalid video selection.' });
+    const have = (job.result.videos || []).filter((v) => (v.scenes || []).length).map((v, i) => v.id || i + 1);
+    if (only.length && !only.every((n) => have.includes(n))) return res.status(400).json({ error: 'One of the selected videos has no storyboard.' });
+    const r = await renderer.dispatch(job.id, { by: req.user.email || 'user', force: true, voiceId, only });
     if (!r.started) return res.status(409).json({ error: r.reason === 'in-progress' ? 'A render is already in progress for this run.' : 'Could not start the render.' });
     res.json({ ok: true });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
