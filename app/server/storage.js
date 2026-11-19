@@ -48,6 +48,15 @@ export function createStorage(baseUrl, key, bucket = 'ace-videos') {
       if (!r.ok) throw fail('list', r);
       return (r.json || []).filter((o) => o && o.name && o.id !== null).map((o) => ({ name: o.name, size: (o.metadata && o.metadata.size) || 0, updatedAt: o.updated_at || null }));
     },
+    // Deletes every object under "<prefix>/" (a run's videos, status and Drive notes). Returns how many were removed.
+    async removeFolder(prefix) {
+      await this.ensureBucket();
+      const files = await this.list(prefix);
+      if (!files.length) return 0;
+      const r = await call('/object/' + bucket, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prefixes: files.map((f) => prefix + '/' + f.name) }) });
+      if (!r.ok) throw fail('delete', r);
+      return files.length;
+    },
     // Short-lived link the browser can play or download without any key.
     async sign(path, seconds = 3600, downloadName) {
       const r = await call('/object/sign/' + bucket + '/' + enc(path), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expiresIn: seconds }) });

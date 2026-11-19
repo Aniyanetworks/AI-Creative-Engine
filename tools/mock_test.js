@@ -2,6 +2,7 @@
 // Usage: node tools/mock_test.js
 const path = require('path');
 const wf = require(path.join(__dirname, '..', 'workflow', 'creative-engine.n8n.json'));
+const driveCalls = []; // bodies sent to the Drive folder service during the mock runs
 const AsyncFn = Object.getPrototypeOf(async function () {}).constructor;
 const byName = Object.fromEntries(wf.nodes.map((n) => [n.name, n]));
 
@@ -76,7 +77,11 @@ async function run(body, maxImages, failImageIds = []) {
         break;
       }
       case 'n8n-nodes-base.httpRequest': {
-        if (node.parameters.url.includes('anthropic')) {
+        if (name === 'Drive Folders') {
+          const sent = JSON.parse(JSON.stringify({ names: outputs['Plan Drive Folders'][0].json.drive_names }));
+          driveCalls.push(sent);
+          outs = [[{ json: { id: 'STATIC_ID', trail: ['BIZ_ID', 'RUN_ID', 'STATIC_ID'], ok: true } }]];
+        } else if (node.parameters.url.includes('anthropic')) {
           if (node.parameters.nodeCredentialType !== 'anthropicApi') throw new Error('Claude node missing credential type');
           outs = [inputItems.map((i) => ({ json: claudeMock(JSON.parse(JSON.stringify(i.json._req))) }))];
         } else if (node.parameters.url.includes('openai')) {
@@ -132,6 +137,9 @@ async function run(body, maxImages, failImageIds = []) {
   check('storyboard: unknown icon falls back to a safe one', v[0].scenes[2].icon === 'star');
   check('storyboard: plain script becomes scenes (first hook, last cta)', v[4].scenes.length === 3 && v[4].scenes[0].kind === 'hook' && v[4].scenes[2].kind === 'cta');
   check('videos are marked storyboard-ready', /storyboard ready/.test(v[0].video_status));
+  check('drive: folders asked for are <business>/<date · run>/Static ads', driveCalls.length >= 1 && driveCalls[0].names[0] === 'Test Co' && /^[0-9]{4}-[0-9]{2}-[0-9]{2} · /.test(driveCalls[0].names[1]) && driveCalls[0].names[2] === 'Static ads', JSON.stringify(driveCalls[0]));
+  check('drive: the run folder id is handed to the app for later deletion', real.final.drive_folder_id === 'RUN_ID' && /folders[/]RUN_ID$/.test(real.final.drive_folder_url), JSON.stringify([real.final.drive_folder_id, real.final.drive_folder_url]));
+  check('drive: uploads are pointed at the run folders (static ads / run)', /static_id/.test(JSON.stringify(wf.nodes.find((n) => n.name === 'Upload To Drive').parameters.folderId)) && /run_id/.test(JSON.stringify(wf.nodes.find((n) => n.name === 'Upload Report').parameters.folderId)));
   check('report has business name', real.final.report_markdown.includes('# Ad Pack: Test Co'));
   console.log(ok ? '\nALL PASS' : '\nSOME FAILED');
   process.exit(ok ? 0 : 1);

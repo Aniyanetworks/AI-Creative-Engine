@@ -147,16 +147,33 @@ One-time setup (about 5 minutes):
 
 Troubleshooting: the Videos tab shows the failure reason and a link to the GitHub Actions log. To run it by hand: GitHub > Actions > *Render videos* > Run workflow > paste the run id. A render that has not finished after 45 minutes is reported as failed. Videos over 50 MB are refused by Supabase's free plan; lower the quality in `render.mjs` (`--crf`) if that ever happens.
 
-Tests: `node tools/test_render.mjs` (64 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
+Tests: `node tools/test_render.mjs` (86 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
 
 ### Choosing the voice
 Before a render, the Videos tab has a **Voiceover voice** menu (your choice is remembered in the browser). It lists your ElevenLabs account's voices when the key has the **Voices: Read** permission (add `ELEVENLABS_API_KEY` to Netlify too, so the app can list them); otherwise it shows ElevenLabs' stock voices. Pick *Other* to paste any voice id from ElevenLabs > Voices. The choice goes to the workflow as an input and falls back to the `ELEVENLABS_VOICE_ID` repository variable.
 
-### Copying videos to Google Drive (through n8n)
-Every finished video can also be saved to Google Drive, using the Drive credential you already have in n8n (no new Google setup).
-1. `NODE_OPTIONS="--dns-result-order=ipv4first" node tools/deploy_drive_n8n.js` creates and activates the n8n workflow **ACE - Save video to Drive** (a private webhook that receives an MP4 and uploads it to `DRIVE_FOLDER_ID` from `.env`, default My Drive root). Its private URL is kept in `workflow/.drive-webhook-path` (git-ignored).
-2. `node video/ci/set-secrets.mjs` copies that URL to the GitHub secret `N8N_DRIVE_WEBHOOK_URL`.
-3. From then on every render also uploads to Drive (best effort: a Drive failure never fails a render), and each video shows **Open in Drive**. For videos rendered earlier, use **Save to Google Drive** in the Videos tab: it copies the stored videos without re-rendering and uses no credits. Files are named `<first 8 characters of the run id>-<n>-<title>.mp4`. Supabase keeps its own copy too.
+### Google Drive (through n8n): folders, copies, and clean-up on delete
+Everything for a run is filed in your Drive folder (`DRIVE_FOLDER_ID` in `.env`, also used by the main workflow) like this:
+
+```
+<your folder>/
+  <business name>/
+    <date> · <first 6 characters of the run id>/
+      Static ads/      the generated images
+      Videos/          the rendered MP4s
+      <business>_ad-pack_<date>.md   the report
+```
+
+Set-up (uses the Drive credential you already have in n8n):
+1. `NODE_OPTIONS="--dns-result-order=ipv4first" node tools/deploy_drive_n8n.js` creates and activates the n8n workflow **ACE - Save video to Drive**: a private webhook that finds or creates folders, receives videos, and moves folders to the Drive bin. Its private URL is kept in `workflow/.drive-webhook-path` (git-ignored). Run it again after changing `DRIVE_FOLDER_ID`.
+2. `node tools/build_workflow.js` then `node tools/deploy_n8n.js` re-deploy the main workflow so images and the report use the same folders.
+3. `node video/ci/set-secrets.mjs` copies the URL to the GitHub secret `N8N_DRIVE_WEBHOOK_URL`.
+4. **Netlify:** add the same URL as the environment variable `N8N_DRIVE_WEBHOOK_URL` (Secret), so that removing a run in the deployed app can delete its folder. Locally the app reads `workflow/.drive-webhook-path` itself. Print the URL with `echo "$N8N_BASE_URL/webhook/$(cat workflow/.drive-webhook-path)"` (Git Bash).
+
+Behaviour:
+- Every render also uploads to Drive (best effort: a Drive failure never fails a render); each video shows **Open in Drive**. For videos rendered earlier, **Save to Google Drive** in the Videos tab copies the stored videos without re-rendering (no credits).
+- **Removing a run in the app** moves its Drive folder to the **Drive bin** (recoverable for 30 days; it never deletes permanently) and deletes the stored videos from Supabase. If Drive cannot be reached the run is still removed and the app says so. Runs made before this feature (files loose in the root folder) are not touched.
+- n8n accepts uploads up to its payload limit (16 MB by default; 20 MB tested). Raise `N8N_PAYLOAD_SIZE_MAX` on the n8n server if videos get bigger.
 
 ### Rendering only some videos
 Each video card has a **Render** tick box. The button then says "Render 2 selected" and the credit estimate (about 500 per video) updates. Videos you do not tick keep their earlier files. Automatic renders after a full run always do all five.

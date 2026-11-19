@@ -6,6 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getBuffer, list, putJson } from './storage.mjs';
+import { videosFolder } from './drivefolder.mjs';
 
 const args = process.argv.slice(2);
 const runId = args[0];
@@ -25,12 +26,19 @@ if (!runId || (!fromStorage && !dir)) {
     ? (await list(runId)).filter((n) => /\.mp4$/i.test(n))
     : (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /\.mp4$/i.test(f)) : []);
   let ok = 0;
+  // The folder was prepared once by the plan step (DRIVE_VIDEOS_FOLDER_ID); the Drive-only job prepares it itself.
+  let folderId = String(process.env.DRIVE_VIDEOS_FOLDER_ID || '').trim();
+  if (!folderId && names.length) {
+    try { folderId = await videosFolder(runId, hook); } catch (e) { console.error('Drive folder could not be prepared:', e.message); }
+  }
+  if (!folderId && names.length) { console.error('Skipping Drive: no folder.'); process.exitCode = strict ? 1 : 0; names.length = 0; }
   for (const name of names) {
     const note = { name, at: new Date().toISOString() };
     try {
       const data = fromStorage ? await getBuffer(runId + '/' + name) : fs.readFileSync(path.join(dir, name));
       const form = new FormData();
-      form.append('name', runId.slice(0, 8) + '-' + name);
+      form.append('name', name);
+      form.append('folderId', folderId);
       form.append('file', new Blob([data], { type: 'video/mp4' }), name);
       const r = await fetch(hook, { method: 'POST', body: form, signal: AbortSignal.timeout(240000) });
       const text = await r.text();

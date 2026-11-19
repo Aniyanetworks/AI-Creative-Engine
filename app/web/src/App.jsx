@@ -50,8 +50,9 @@ function Main({ me, onSignOut }) {
 
   const removeRun = async (job) => {
     try {
-      await api.removeJob(job.id);
+      const r = await api.removeJob(job.id);
       if (activeId === job.id) setActiveId(null);
+      if (r && r.drive === 'failed') setStatusErr('The run was removed, but its Google Drive folder could not be deleted (' + (r.driveError || 'unknown error') + '). Delete it by hand in Drive if you want it gone.');
       await refreshJobs();
     } catch (e) { setStatusErr(e.message); }
   };

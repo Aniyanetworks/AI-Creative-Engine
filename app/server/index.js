@@ -14,6 +14,7 @@ import { createAuth, rateLimiter } from './auth.js';
 import { createStorage } from './storage.js';
 import { createRenderer } from './render.js';
 import { listVoices, isVoiceId } from './voices.js';
+import { createDrive } from './drive.js';
 
 dns.setDefaultResultOrder('ipv4first');
 if (net.setDefaultAutoSelectFamilyAttemptTimeout) net.setDefaultAutoSelectFamilyAttemptTimeout(5000);
@@ -60,6 +61,14 @@ const renderer = createRenderer({
   storage, token: pick('GH_DISPATCH_TOKEN'), repo: pick('GITHUB_REPO') || 'Aniyanetworks/AI-Creative-Engine',
   ref: pick('GITHUB_REF') || 'main', apiBase: pick('GITHUB_API_URL') || 'https://api.github.com',
 });
+
+// Google Drive folders for runs (see app/server/drive.js). The webhook URL is N8N_DRIVE_WEBHOOK_URL, or built from the local
+// workflow/.drive-webhook-path file that tools/deploy_drive_n8n.js writes.
+let driveHook = pick('N8N_DRIVE_WEBHOOK_URL');
+if (!driveHook) {
+  try { driveHook = N8N_BASE + '/webhook/' + fs.readFileSync(path.join(projectRoot, 'workflow', '.drive-webhook-path'), 'utf8').trim(); } catch { /* not deployed or on Netlify */ }
+}
+const drive = createDrive({ hookUrl: driveHook });
 
 const AUTH_ON = store.kind === 'supabase' && pick('AUTH_REQUIRED').toLowerCase() !== 'false';
 const auth = AUTH_ON ? createAuth({ supabaseUrl: SUPABASE_URL, apiKey: SUPABASE_PUBLISHABLE || SUPABASE_KEY }) : null;
@@ -347,8 +356,12 @@ app.delete('/api/jobs/:id', authenticate, approved, async (req, res) => {
   try {
     const job = await store.get(req.params.id);
     if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
+    // Take the run's Drive folder (to the Drive bin) and stored videos with it. Failures are reported, never block the removal.
+    const cleanup = { drive: 'skipped', videos: 'skipped' };
+    try { cleanup.drive = await drive.removeRun(job); } catch (e) { cleanup.drive = 'failed'; cleanup.driveError = e.message; }
+    if (storage) { try { await storage.removeFolder(job.id); cleanup.videos = 'deleted'; } catch (e) { cleanup.videos = 'failed'; } }
     await store.remove(req.params.id);
-    res.json({ ok: true });
+    res.json({ ok: true, ...cleanup });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 

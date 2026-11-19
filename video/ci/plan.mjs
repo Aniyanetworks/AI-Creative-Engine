@@ -2,6 +2,7 @@
 // Outputs a matrix ({"n":[1,2,3,4,5]}) so every video renders in its own parallel job.
 import fs from 'fs';
 import { getJson, putJson, runLink, supabaseKey, supabaseUrl } from './storage.mjs';
+import { videosFolder } from './drivefolder.mjs';
 
 // Failures are thrown and handled once at the bottom, so the process ends through exitCode instead of
 // process.exit() (which can crash on Windows while sockets are still closing).
@@ -32,7 +33,13 @@ try {
   await putJson(runId + '/status.json', { ...cur, status: 'rendering', total: numbers.length, runUrl: runLink(), startedAt: new Date().toISOString(), message: undefined });
 
   console.log('Rendering videos', numbers.join(', '), 'for run', runId);
-  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify({ n: numbers })}\n`);
+  // Google Drive: make the run's "Videos" folder once here, so the parallel render jobs do not each create one.
+  let folder = '';
+  if (process.env.N8N_DRIVE_WEBHOOK_URL) {
+    try { folder = await videosFolder(runId, process.env.N8N_DRIVE_WEBHOOK_URL); console.log('Drive folder ready.'); }
+    catch (e) { console.error('Drive folder could not be prepared (videos will not be copied to Drive):', e.message); }
+  }
+  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify({ n: numbers })}\nfolder=${folder}\n`);
   else console.log(JSON.stringify({ n: numbers }));
 } catch (e) {
   console.error(e.message);

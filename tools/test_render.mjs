@@ -16,7 +16,7 @@ const BUCKET = 'ace-videos';
 const objects = new Map(); // "<path>" -> { body: Buffer, contentType }
 const runs = new Map();    // id -> { result, status }
 const github = { calls: [], fail: 0 };
-const n8n = { calls: [], fail: false };
+const n8n = { calls: [], folderCalls: [], fail: false, folderFail: false, nothingToDelete: false };
 let bucketCreated = false;
 
 const server = http.createServer((req, res) => {
@@ -36,10 +36,18 @@ const server = http.createServer((req, res) => {
       return send(204);
     }
     // n8n "save video to Drive" webhook
+    if (p === '/webhook/drive' && req.method === 'POST' && /json/.test(req.headers['content-type'] || '')) {
+      const j = JSON.parse(body.toString() || '{}');
+      n8n.folderCalls.push(j);
+      if (n8n.folderFail) return send(500, { message: 'Workflow error' });
+      if (j.action === 'ensure') return send(200, { action: 'ensure', id: 'FOLDER_' + (j.names || []).filter(Boolean).slice(-1)[0], trail: ['A', 'B', 'C'], ok: true });
+      if (j.action === 'delete') return send(200, { ok: true, deleted: !n8n.nothingToDelete, id: j.id || 'by-names' });
+    }
     if (p === '/webhook/drive' && req.method === 'POST') {
       const text = body.toString('latin1');
       const name = (/name="name"\r\n\r\n([^\r]*)/.exec(text) || [])[1];
-      n8n.calls.push({ name, bytes: body.length, hasFile: /name="file"; filename="[^"]+"/.test(text) });
+      const folderId = (/name="folderId"\r\n\r\n([^\r]*)/.exec(text) || [])[1];
+      n8n.calls.push({ name, folderId, bytes: body.length, hasFile: /name="file"; filename="[^"]+"/.test(text) });
       if (n8n.fail) return send(500, { message: 'Workflow error' });
       return send(200, { id: 'DRV' + n8n.calls.length, url: 'https://drive.google.com/file/d/DRV' + n8n.calls.length + '/view' });
     }
@@ -58,6 +66,8 @@ const server = http.createServer((req, res) => {
     }
     m = p.match(/^\/storage\/v1\/object\/sign\/([^/]+)\/(.+)$/);
     if (m && req.method === 'POST') return objects.has(m[2]) ? send(200, { signedURL: `/object/sign/${m[1]}/${m[2]}?token=tok123` }) : send(400, { message: 'Object not found' });
+    m = p.match(/^\/storage\/v1\/object\/([^/]+)$/);
+    if (m && req.method === 'DELETE') { for (const k of JSON.parse(body.toString()).prefixes) objects.delete(k); return send(200, []); }
     m = p.match(/^\/storage\/v1\/object\/([^/]+)\/(.+)$/);
     if (m && req.method === 'POST') {
       const exists = objects.has(m[2]);
@@ -201,7 +211,7 @@ check('finish: "success" with no uploaded files is not reported as done', st.sta
 const PORT = 8799;
 const srv = spawn(process.execPath, ['app/server/index.js'], {
   cwd: root,
-  env: { ...process.env, PORT: String(PORT), SUPABASE_URL: base, SUPABASE_SERVICE_KEY: 'secret-key', AUTH_REQUIRED: 'false', GH_DISPATCH_TOKEN: 'ghp_route', GITHUB_REPO: 'acme/engine', GITHUB_API_URL: base },
+  env: { ...process.env, PORT: String(PORT), SUPABASE_URL: base, SUPABASE_SERVICE_KEY: 'secret-key', AUTH_REQUIRED: 'false', N8N_DRIVE_WEBHOOK_URL: base + '/webhook/drive', GH_DISPATCH_TOKEN: 'ghp_route', GITHUB_REPO: 'acme/engine', GITHUB_API_URL: base },
 });
 let srvLog = '';
 srv.stdout.on('data', (x) => (srvLog += x)); srv.stderr.on('data', (x) => (srvLog += x));
@@ -263,7 +273,7 @@ check('route: status says the Drive copy is in progress', x.json.task === 'drive
 
 const hookUrl = base + '/webhook/drive';
 r = await run('video/ci/drive.mjs', [DR, '--from-storage', '--strict'], { N8N_DRIVE_WEBHOOK_URL: hookUrl });
-check('drive: downloads each stored video and sends it to n8n with a run-prefixed name', r.code === 0 && n8n.calls.length === 2 && n8n.calls.every((c) => c.hasFile && c.bytes > 20000) && n8n.calls[0].name === 'driverun-1-first.mp4', r.err + r.out + JSON.stringify(n8n.calls));
+check('drive: downloads each stored video and sends it to n8n with a run-prefixed name', r.code === 0 && n8n.calls.length === 2 && n8n.calls.every((c) => c.hasFile && c.bytes > 20000) && n8n.calls[0].name === '1-first.mp4' && n8n.calls.every((c) => c.folderId === 'FOLDER_Videos') && n8n.folderCalls.length === 1 && n8n.folderCalls[0].names.length === 3 && n8n.folderCalls[0].names[2] === 'Videos', r.err + r.out + JSON.stringify(n8n.calls));
 x = await api('GET', '/api/jobs/' + DR + '/videos');
 check('drive: the app gets a Drive link for every video', x.json.videos.length === 2 && x.json.videos.every((q) => /drive\.google\.com\/file\/d\/DRV/.test(q.driveUrl)) && x.json.videos.every((q) => !/drive\.json/.test(q.name)), JSON.stringify(x.json.videos));
 
@@ -305,6 +315,48 @@ check('route: the status remembers which videos were requested', Array.isArray(x
 runs.set('routerun0006', { status: 'success', result: { videos: [{ id: 1, scenes: [{ vo: 'a' }] }] } });
 await post('/api/jobs/routerun0006/render-videos', {});
 check('route: no selection means every video (empty "only")', github.calls.find((c) => c.body.inputs.run_id === 'routerun0006').body.inputs.only === '');
+
+// ---- Drive folder structure and clean-up on delete ----
+const delApi = (id) => api('DELETE', '/api/jobs/' + id);
+runs.set('folderrun001', { created_at: '2026-11-20T10:00:00Z', url: 'https://www.acme-hvac.com', result: { business: 'Acme: Heating / Cooling', videos: [{ id: 1, scenes: [{ vo: 'x' }] }] }, status: 'success' });
+n8n.folderCalls.length = 0;
+fs.writeFileSync(ghOut, '');
+r = await run('video/ci/plan.mjs', [], { RUN_ID: 'folderrun001', GITHUB_OUTPUT: ghOut, N8N_DRIVE_WEBHOOK_URL: hookUrl });
+const planOut = fs.readFileSync(ghOut, 'utf8');
+check('plan: prepares the Drive folder once and passes its id on', r.code === 0 && n8n.folderCalls.length === 1 && /folder=FOLDER_Videos/.test(planOut), r.err + planOut);
+check('plan: folder path is <business>/<date · run id>/Videos with unsafe characters removed', JSON.stringify(n8n.folderCalls[0].names) === JSON.stringify(['Acme Heating Cooling', '2026-11-20 · folder', 'Videos']), JSON.stringify(n8n.folderCalls[0]));
+runs.set('folderrun002', { created_at: '2026-11-20T10:00:00Z', url: 'https://x.test', result: { business: 'Acme', drive_folder_id: 'MAINRUNFOLDER', videos: [{ id: 1, scenes: [{ vo: 'x' }] }] }, status: 'success' });
+n8n.folderCalls.length = 0; fs.writeFileSync(ghOut, '');
+r = await run('video/ci/plan.mjs', [], { RUN_ID: 'folderrun002', GITHUB_OUTPUT: ghOut, N8N_DRIVE_WEBHOOK_URL: hookUrl });
+check('plan: when the main workflow already made the run folder, Videos goes inside it', n8n.folderCalls.length === 1 && n8n.folderCalls[0].parentId === 'MAINRUNFOLDER' && JSON.stringify(n8n.folderCalls[0].names) === '["Videos"]', JSON.stringify(n8n.folderCalls));
+n8n.folderCalls.length = 0; n8n.calls.length = 0;
+const dir3 = path.join(tmp, 'out3'); fs.mkdirSync(dir3); fs.writeFileSync(path.join(dir3, '1-a.mp4'), Buffer.alloc(30000, 5));
+r = await run('video/ci/drive.mjs', ['folderrun001', dir3], { N8N_DRIVE_WEBHOOK_URL: hookUrl, DRIVE_VIDEOS_FOLDER_ID: 'PREPARED' });
+check('drive: uses the folder prepared by the plan step without creating another', r.code === 0 && n8n.folderCalls.length === 0 && n8n.calls[0].folderId === 'PREPARED', r.err + JSON.stringify(n8n.calls));
+
+// deleting a run
+objects.set('folderrun001/1-a.mp4', { body: Buffer.alloc(100), contentType: 'video/mp4' });
+objects.set('folderrun001/status.json', { body: Buffer.from('{}'), contentType: 'application/json' });
+n8n.folderCalls.length = 0;
+x = await delApi('folderrun001');
+check('delete: the run folder is looked up by business and run name, and trashed in Drive', x.status === 200 && x.json.drive === 'deleted' && n8n.folderCalls.length === 1 && n8n.folderCalls[0].action === 'delete' && JSON.stringify(n8n.folderCalls[0].names) === JSON.stringify(['Acme Heating Cooling', '2026-11-20 · folder']), JSON.stringify(x.json) + JSON.stringify(n8n.folderCalls));
+check('delete: the stored videos are removed too', x.json.videos === 'deleted' && ![...objects.keys()].some((k) => k.startsWith('folderrun001/')), JSON.stringify([...objects.keys()]));
+n8n.folderCalls.length = 0;
+x = await delApi('folderrun002');
+check('delete: a run whose workflow saved the folder id deletes exactly that folder', x.json.drive === 'deleted' && n8n.folderCalls[0].id === 'MAINRUNFOLDER' && !n8n.folderCalls[0].names, JSON.stringify(n8n.folderCalls));
+runs.set('folderrun003', { created_at: '2026-11-20T10:00:00Z', url: 'https://x.test', result: { business: 'Acme', videos: [] }, status: 'success' });
+n8n.nothingToDelete = true;
+x = await delApi('folderrun003');
+check('delete: nothing in Drive for the run is fine', x.status === 200 && x.json.drive === 'none', JSON.stringify(x.json));
+n8n.nothingToDelete = false; n8n.folderFail = true;
+runs.set('folderrun004', { created_at: '2026-11-20T10:00:00Z', url: 'https://x.test', result: { business: 'Acme', videos: [] }, status: 'success' });
+x = await delApi('folderrun004');
+check('delete: if Drive cannot be reached the run is still removed and the app is told', x.status === 200 && x.json.ok === true && x.json.drive === 'failed' && !!x.json.driveError, JSON.stringify(x.json));
+n8n.folderFail = false;
+runs.set('folderrun005', { created_at: '2026-11-20T10:00:00Z', url: 'https://x.test', result: null, status: 'running' });
+n8n.folderCalls.length = 0;
+x = await delApi('folderrun005');
+check('delete: a run with no result yet does not touch Drive', x.status === 200 && x.json.drive === 'none' && n8n.folderCalls.length === 0, JSON.stringify(x.json));
 
 srv.kill();
 

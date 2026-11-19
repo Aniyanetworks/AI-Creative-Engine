@@ -21,6 +21,14 @@ let webhookPath;
 if (fs.existsSync(pathFile)) webhookPath = fs.readFileSync(pathFile, 'utf8').trim();
 else { webhookPath = 'creative-engine-' + crypto.randomBytes(12).toString('hex'); fs.writeFileSync(pathFile, webhookPath); }
 
+// The Drive folder service (tools/deploy_drive_n8n.js) keeps its private webhook path in workflow/.drive-webhook-path.
+let driveHookUrl = '';
+try {
+  const e = fs.readFileSync(path.join(root, '.env'), 'utf8').match(/^N8N_BASE_URL=(.*)$/m);
+  const base = (e ? e[1].trim().replace(/^['"]|['"]$/g, '') : 'https://n8n.srv1300653.hstgr.cloud').replace(/[/]+$/, '');
+  driveHookUrl = base + '/webhook/' + fs.readFileSync(path.join(root, 'workflow', '.drive-webhook-path'), 'utf8').trim();
+} catch { /* not deployed yet: uploads go straight to the root folder */ }
+
 const BASE = `
 const cfg = $('Config').first().json;
 const input = $('Webhook').first().json.body || {};
@@ -59,6 +67,7 @@ seq(place({
       field('image_model', 'gpt-image-1'),
       field('image_quality', 'medium'),
       field('drive_folder_id', 'root'),
+      field('drive_hook_url', driveHookUrl),
       field('max_images', '20'),
       field('max_videos', '5'),
       field('ad_country', 'CA'),
@@ -222,6 +231,28 @@ const render_count = ctx.dry_run ? 0 : Math.max(0, Math.min(parseInt(input.max_i
 return [{ json: { ...ctx, statics, render_count } }];`,
 });
 
+// ---------- Google Drive folders: <root>/<business>/<date> · <run id>/{Static ads, Videos, report} ----------
+codeNode('Plan Drive Folders', BASE + `
+const ctx = $input.first().json;
+const clean = (s) => String(s || '').split('/').join(' ').split(String.fromCharCode(92)).join(' ').replace(/[:*?"<>|]/g, ' ').replace(/ +/g, ' ').trim().slice(0, 80);
+const business = clean(ctx.brief && ctx.brief.business_name) || 'Unnamed business';
+const runKey = new Date().toISOString().slice(0, 10) + ' · ' + String(input.job_id || Date.now()).slice(0, 6);
+return [{ json: { ...ctx, drive_names: [business, runKey, 'Static ads'] } }];`);
+seq(place({
+  name: 'Drive Folders', type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, onError: 'continueRegularOutput',
+  parameters: {
+    method: 'POST', url: "={{ $('Config').first().json.drive_hook_url }}", sendBody: true, specifyBody: 'json',
+    jsonBody: "={{ JSON.stringify({ action: 'ensure', names: $('Plan Drive Folders').first().json.drive_names }) }}",
+    options: { timeout: 60000 },
+  },
+}));
+codeNode('Attach Drive Folders', `
+const ctx = { ...$('Plan Drive Folders').first().json };
+const r = $input.first().json || {};
+delete ctx.drive_names;
+ctx.drive = r.id && Array.isArray(r.trail) ? { static_id: r.id, run_id: r.trail[1] || null, run_url: r.trail[1] ? 'https://drive.google.com/drive/folders/' + r.trail[1] : null } : { error: String(r.error && (r.error.message || r.error) || r.message || 'Drive folder service unavailable').slice(0, 200) };
+return [{ json: ctx }];`);
+
 // ---------- Render statics: OpenAI image (n8n credential) -> Google Drive (n8n credential) ----------
 const anyRenders = place({
   name: 'Any Images To Render', type: 'n8n-nodes-base.if', typeVersion: 2.2,
@@ -281,7 +312,7 @@ const drive = place({
     resource: 'file', operation: 'upload', inputDataFieldName: 'data',
     name: '={{ $json.file_name }}',
     driveId: { __rl: true, mode: 'list', value: 'My Drive' },
-    folderId: { __rl: true, mode: 'id', value: "={{ $('Config').first().json.drive_folder_id }}" },
+    folderId: { __rl: true, mode: 'id', value: "={{ ($('Attach Drive Folders').first().json.drive || {}).static_id || $('Config').first().json.drive_folder_id }}" },
     options: {},
   },
 });
@@ -445,7 +476,7 @@ const uploadReport = place({
   parameters: {
     resource: 'file', operation: 'upload', inputDataFieldName: 'data', name: '={{ $json.file_name }}',
     driveId: { __rl: true, mode: 'list', value: 'My Drive' },
-    folderId: { __rl: true, mode: 'id', value: "={{ $('Config').first().json.drive_folder_id }}" },
+    folderId: { __rl: true, mode: 'id', value: "={{ ($('Attach Drive Folders').first().json.drive || {}).run_id || $('Config').first().json.drive_folder_id }}" },
     options: {},
   },
 });
@@ -457,6 +488,10 @@ const pack = { ...$('Package and Deliver').first().json };
 const up = $input.first().json || {};
 pack.report_drive_url = up.id ? 'https://drive.google.com/file/d/' + up.id + '/view' : null;
 pack.report_drive_status = up.id ? 'ok' : 'failed (see execution for the Drive error)';
+const dr = $('Attach Drive Folders').first().json.drive || {};
+pack.drive_folder_id = dr.run_id || null; // the run's folder: the app deletes it when the run is removed
+pack.drive_folder_url = dr.run_url || null;
+if (dr.error) pack.drive_folder_error = dr.error;
 let callback = 'none';
 if (input.callback_url) {
   try { await this.helpers.httpRequest({ method: 'POST', url: input.callback_url, body: pack, json: true }); callback = 'sent'; }
