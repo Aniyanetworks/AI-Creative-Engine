@@ -118,20 +118,22 @@ function VoicePicker({ value, onChange }) {
   const [data, setData] = useState(null);
   useEffect(() => { api.getVoices().then(setData).catch(() => setData({ voices: [], source: 'none' })); }, []);
   const voices = (data && data.voices) || [];
-  const known = !value || voices.some((v) => v.id === value);
+  const [custom, setCustom] = useState(false); // "Other" chosen (or a saved id that is not in the list)
+  const known = !custom && (!value || voices.some((v) => v.id === value) || !data);
   const cur = voices.find((v) => v.id === value);
   return (
     <div className="voicepick">
       <label className="small muted" htmlFor="voice">Voiceover voice</label>
       <div className="row gap">
-        <select id="voice" value={known ? value : '__custom'} onChange={(e) => onChange(e.target.value === '__custom' ? '' : e.target.value)}>
+        <select id="voice" value={known ? value : '__custom'} onChange={(e) => { const c = e.target.value === '__custom'; setCustom(c); onChange(c ? '' : e.target.value); }}>
           <option value="">Default voice</option>
           {voices.map((v) => <option key={v.id} value={v.id}>{v.name}{v.note ? ' · ' + v.note : ''}</option>)}
           <option value="__custom">Other (paste a voice id)…</option>
         </select>
         {cur && cur.previewUrl && <audio controls preload="none" src={cur.previewUrl} style={{ height: 32 }} />}
       </div>
-      {!known && <input placeholder="ElevenLabs voice id" value={value} onChange={(e) => onChange(e.target.value.trim())} />}
+      {!known && <input autoFocus placeholder="Paste the ElevenLabs voice id" value={value} onChange={(e) => onChange(e.target.value.trim())} />}
+      {!known && value && !/^[A-Za-z0-9]{12,40}$/.test(value) && <span className="note">That doesn't look like a voice id (letters and digits only, about 20 characters).</span>}
       {data && data.source === 'stock' && <span className="note">Showing stock voices. To list your own voices, give the ElevenLabs key the Voices: Read permission.</span>}
     </div>
   );
