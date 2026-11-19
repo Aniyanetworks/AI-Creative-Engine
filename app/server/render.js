@@ -30,17 +30,21 @@ export function createRenderer({ storage, token, repo, ref = 'main', workflow = 
       const mp4s = files.filter((x) => /.mp4$/i.test(x.name));
       const videos = await Promise.all(mp4s.map(async (f) => {
         const n = parseInt(f.name, 10); // files are named "<n>-<slug>.mp4"
-        const [url, downloadUrl] = await Promise.all([storage.sign(runId + '/' + f.name, 3600), storage.sign(runId + '/' + f.name, 3600, f.name)]);
-        return { n: Number.isFinite(n) ? n : null, name: f.name, size: f.size, url, downloadUrl };
+        const hasDrive = files.some((x) => x.name === f.name + '.drive.json'); // written by the workflow after a Google Drive upload
+        const [url, downloadUrl, drive] = await Promise.all([
+          storage.sign(runId + '/' + f.name, 3600), storage.sign(runId + '/' + f.name, 3600, f.name),
+          hasDrive ? storage.getJson(runId + '/' + f.name + '.drive.json').catch(() => null) : null,
+        ]);
+        return { n: Number.isFinite(n) ? n : null, name: f.name, size: f.size, url, downloadUrl, driveUrl: (drive && drive.url) || null, driveError: (drive && drive.error) || null };
       }));
       videos.sort((a, b) => (a.n || 0) - (b.n || 0));
-      return { configured: true, status: s ? s.status : videos.length ? 'done' : 'idle', message: s && s.message, runUrl: s && s.runUrl, requestedAt: s && s.requestedAt, finishedAt: s && s.finishedAt, videos, actionsUrl: this.actionsUrl };
+      return { configured: true, status: s ? s.status : videos.length ? 'done' : 'idle', message: s && s.message, runUrl: s && s.runUrl, task: s && s.task, voiceId: s && s.voiceId, requestedAt: s && s.requestedAt, finishedAt: s && s.finishedAt, videos, actionsUrl: this.actionsUrl };
     },
 
     // Starts a render. Returns { started: true } or { started: false, reason } (already in progress etc.).
-    async dispatch(runId, { by = 'user', force = false } = {}) {
+    async dispatch(runId, { by = 'user', force = false, voiceId = '', task = 'render' } = {}) {
       if (!configured) return { started: false, reason: 'not-configured' };
-      const record = { status: 'queued', requestedAt: new Date().toISOString(), requestedBy: by };
+      const record = { status: 'queued', task, voiceId: voiceId || undefined, requestedAt: new Date().toISOString(), requestedBy: by };
       // The first writer wins: with upsert off, a second automatic trigger sees the file and backs off.
       let won = await storage.putJson(statusPath(runId), record, { upsert: false });
       if (!won) {
@@ -53,7 +57,7 @@ export function createRenderer({ storage, token, repo, ref = 'main', workflow = 
       const r = await fetch(apiBase + '/repos/' + repo + '/actions/workflows/' + workflow + '/dispatches', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'content-type': 'application/json', 'User-Agent': 'ai-creative-engine' },
-        body: JSON.stringify({ ref, inputs: { run_id: runId, voice: 'true' } }),
+        body: JSON.stringify({ ref, inputs: { run_id: runId, voice: 'true', voice_id: voiceId || '', drive_only: task === 'drive' ? 'true' : 'false' } }),
         signal: AbortSignal.timeout(20000),
       });
       if (!r.ok) {

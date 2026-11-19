@@ -112,17 +112,51 @@ function useRender(jobId) {
   return { st, err, reload: load };
 }
 
+// Voice choice for the voiceover: the account's ElevenLabs voices (or stock ones), a preview, and a custom id.
+const VOICE_KEY = 'ace-voice';
+function VoicePicker({ value, onChange }) {
+  const [data, setData] = useState(null);
+  useEffect(() => { api.getVoices().then(setData).catch(() => setData({ voices: [], source: 'none' })); }, []);
+  const voices = (data && data.voices) || [];
+  const known = !value || voices.some((v) => v.id === value);
+  const cur = voices.find((v) => v.id === value);
+  return (
+    <div className="voicepick">
+      <label className="small muted" htmlFor="voice">Voiceover voice</label>
+      <div className="row gap">
+        <select id="voice" value={known ? value : '__custom'} onChange={(e) => onChange(e.target.value === '__custom' ? '' : e.target.value)}>
+          <option value="">Default voice</option>
+          {voices.map((v) => <option key={v.id} value={v.id}>{v.name}{v.note ? ' · ' + v.note : ''}</option>)}
+          <option value="__custom">Other (paste a voice id)…</option>
+        </select>
+        {cur && cur.previewUrl && <audio controls preload="none" src={cur.previewUrl} style={{ height: 32 }} />}
+      </div>
+      {!known && <input placeholder="ElevenLabs voice id" value={value} onChange={(e) => onChange(e.target.value.trim())} />}
+      {data && data.source === 'stock' && <span className="note">Showing stock voices. To list your own voices, give the ElevenLabs key the Voices: Read permission.</span>}
+    </div>
+  );
+}
+
 function RenderPanel({ jobId, render }) {
   const { st, err, reload } = render;
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [startErr, setStartErr] = useState('');
+  const [voice, setVoice] = useState(() => { try { return localStorage.getItem(VOICE_KEY) || ''; } catch { return ''; } });
+  const pickVoice = (v) => { setVoice(v); try { localStorage.setItem(VOICE_KEY, v); } catch { /* private mode */ } };
+  const [driveBusy, setDriveBusy] = useState(false);
   const cmd = 'cd video\nnode render.mjs ' + (jobId || '<run id>');
 
   const start = async () => {
     setBusy(true); setStartErr(''); setConfirm(false);
-    try { await api.renderVideos(jobId); await reload(); } catch (e) { setStartErr(e.message); }
+    try { await api.renderVideos(jobId, voice); await reload(); } catch (e) { setStartErr(e.message); }
     finally { setBusy(false); }
+  };
+
+  const toDrive = async () => {
+    setDriveBusy(true); setStartErr('');
+    try { await api.saveToDrive(jobId); await reload(); } catch (e) { setStartErr(e.message); }
+    finally { setDriveBusy(false); }
   };
 
   const Local = () => (
@@ -163,10 +197,11 @@ function RenderPanel({ jobId, render }) {
           {st.status === 'idle' && (<>
             <b style={{ display: 'block' }}>Render these videos online</b>
             <span className="muted small">GitHub renders all 5 videos with an ElevenLabs voiceover and brand-colored captions, in about 5 to 8 minutes. It uses roughly 2,500 ElevenLabs credits. Nothing runs on your computer.</span>
+            <VoicePicker value={voice} onChange={pickVoice} />
           </>)}
           {working && (<>
-            <b style={{ display: 'block' }}>{st.status === 'queued' ? 'Starting the render…' : 'Rendering your videos…'}</b>
-            <span className="muted small">This takes about 5 to 8 minutes. You can leave this page; the videos will be here when it finishes.{st.runUrl ? ' ' : ''}{st.runUrl && <a href={st.runUrl} target="_blank" rel="noreferrer">Watch progress on GitHub <ExternalLink size={12} /></a>}</span>
+            <b style={{ display: 'block' }}>{st.task === 'drive' ? 'Saving the videos to Google Drive…' : st.status === 'queued' ? 'Starting the render…' : 'Rendering your videos…'}</b>
+            <span className="muted small">{st.task === 'drive' ? 'This takes a minute or two.' : 'This takes about 5 to 8 minutes.'} You can leave this page; the videos will be here when it finishes.{st.runUrl ? ' ' : ''}{st.runUrl && <a href={st.runUrl} target="_blank" rel="noreferrer">Watch progress on GitHub <ExternalLink size={12} /></a>}</span>
           </>)}
           {st.status === 'done' && (<>
             <b style={{ display: 'block' }}>{st.videos.length} video{st.videos.length === 1 ? '' : 's'} ready</b>
@@ -177,6 +212,7 @@ function RenderPanel({ jobId, render }) {
             <span className="small">{st.message || 'Something went wrong.'}{st.runUrl && <> <a href={st.runUrl} target="_blank" rel="noreferrer">Open the log <ExternalLink size={12} /></a></>}</span>
           </>)}
           {startErr && <div className="banner err" style={{ marginTop: 10, marginBottom: 0 }}><AlertTriangle size={16} />{startErr}</div>}
+          {!working && st.status !== 'idle' && confirm && <VoicePicker value={voice} onChange={pickVoice} />}
           {!working && (
             <div className="row gap" style={{ marginTop: 12 }}>
               {confirm ? (<>
@@ -187,6 +223,12 @@ function RenderPanel({ jobId, render }) {
                   {busy ? <Loader2 size={14} className="rot" /> : <Clapperboard size={14} />} {st.status === 'idle' ? 'Render videos online' : st.status === 'failed' ? 'Try again' : 'Render again'}
                 </button>
               )}
+            </div>
+          )}
+          {!working && st.videos.length > 0 && st.videos.some((v) => !v.driveUrl) && (
+            <div className="row gap" style={{ marginTop: 8 }}>
+              <button className="ghost" onClick={toDrive} disabled={driveBusy}>{driveBusy ? <Loader2 size={14} className="rot" /> : <CloudUpload size={14} />} Save to Google Drive</button>
+              <span className="note">Copies the finished videos to Drive. No credits used.</span>
             </div>
           )}
           {!working && <Local />}
@@ -215,7 +257,11 @@ function Videos({ pack, jobId }) {
               {file && (
                 <div className="player">
                   <video src={file.url} controls playsInline preload="metadata" />
-                  <a className="ghost" href={file.downloadUrl}><Download size={13} /> Download MP4</a>
+                  <div className="row gap">
+                    <a className="ghost" href={file.downloadUrl}><Download size={13} /> Download MP4</a>
+                    {file.driveUrl && <a className="ghost" href={file.driveUrl} target="_blank" rel="noreferrer"><FolderOpen size={13} /> Open in Drive</a>}
+                  </div>
+                  {file.driveError && !file.driveUrl && <span className="note" title={file.driveError}>Drive copy failed</span>}
                 </div>
               )}
               {(v.scenes || []).length ? (

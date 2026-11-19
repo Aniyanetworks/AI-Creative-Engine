@@ -3,7 +3,8 @@
 # or by hand: Actions > Render videos > Run workflow > enter the run id.
 #
 # Needs these repository secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY, ELEVENLABS_API_KEY
-# Optional repository variable: ELEVENLABS_VOICE_ID
+# Optional repository variable: ELEVENLABS_VOICE_ID (the default voice; the app can pick one per render)
+# Optional repository secret: N8N_DRIVE_WEBHOOK_URL (copies every finished video to Google Drive through n8n; see SETUP.md)
 name: Render videos
 
 on:
@@ -23,6 +24,16 @@ on:
         required: false
         default: 'true'
         type: string
+      voice_id:
+        description: ElevenLabs voice id (empty = the default voice)
+        required: false
+        default: ''
+        type: string
+      drive_only:
+        description: Do not render; only copy the already-rendered videos to Google Drive
+        required: false
+        default: 'false'
+        type: string
 
 concurrency:
   group: render-${{ inputs.run_id }}
@@ -35,6 +46,7 @@ env:
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
   RUN_ID: ${{ inputs.run_id }}
+  N8N_DRIVE_WEBHOOK_URL: ${{ secrets.N8N_DRIVE_WEBHOOK_URL }}
 
 jobs:
   prepare:
@@ -54,6 +66,7 @@ jobs:
 
   render:
     needs: prepare
+    if: inputs.drive_only != 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     strategy:
@@ -78,13 +91,30 @@ jobs:
         working-directory: video
         env:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
+          ELEVENLABS_VOICE_ID: ${{ inputs.voice_id || vars.ELEVENLABS_VOICE_ID }}
         run: node render.mjs "$RUN_ID" --only ${{ matrix.n }} --out out ${{ inputs.voice == 'false' && '--no-voice' || '--require-voice' }}
       - name: Upload to Supabase Storage
         run: node video/ci/upload.mjs "$RUN_ID" video/out
+      - name: Copy to Google Drive (through n8n, optional)
+        if: env.N8N_DRIVE_WEBHOOK_URL != ''
+        continue-on-error: true
+        run: node video/ci/drive.mjs "$RUN_ID" video/out
+
+  drive:
+    needs: prepare
+    if: inputs.drive_only == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Copy the rendered videos to Google Drive
+        run: node video/ci/drive.mjs "$RUN_ID" --from-storage --strict
 
   finish:
-    needs: [prepare, render]
+    needs: [prepare, render, drive]
     if: always()
     runs-on: ubuntu-22.04
     timeout-minutes: 5
@@ -98,3 +128,5 @@ jobs:
         env:
           PREPARE_RESULT: ${{ needs.prepare.result }}
           RENDER_RESULT: ${{ needs.render.result }}
+          DRIVE_RESULT: ${{ needs.drive.result }}
+          DRIVE_ONLY: ${{ inputs.drive_only }}

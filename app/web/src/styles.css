@@ -297,3 +297,7 @@ section.card > .urow:first-child { border-top: 0; }
 .tile.okt { background: var(--ok); color: #fff; } .tile.badt { background: var(--bad); color: #fff; }
 .player { display: grid; gap: 8px; justify-items: start; }
 .player video { width: 100%; max-height: 440px; aspect-ratio: 9 / 16; object-fit: contain; background: #000; border-radius: var(--r-sm); }
+
+.voicepick { display: grid; gap: 6px; margin-top: 12px; max-width: 460px; }
+.voicepick select, .voicepick input { width: 100%; }
+.voicepick audio { max-width: 220px; }

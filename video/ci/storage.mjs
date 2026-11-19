@@ -44,6 +44,13 @@ export async function getJson(objectPath) {
   return r.json;
 }
 
+export async function getBuffer(objectPath) {
+  await ensureBucket();
+  const r = await fetch(root + '/object/' + BUCKET + '/' + enc(objectPath), { headers: H });
+  if (!r.ok) throw new Error('Download of ' + objectPath + ' failed: HTTP ' + r.status);
+  return Buffer.from(await r.arrayBuffer());
+}
+
 export async function list(prefix) {
   await ensureBucket();
   const r = await call('/object/list/' + BUCKET, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prefix, limit: 100, sortBy: { column: 'name', order: 'asc' } }) });

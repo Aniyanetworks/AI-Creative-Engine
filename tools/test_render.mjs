@@ -16,6 +16,7 @@ const BUCKET = 'ace-videos';
 const objects = new Map(); // "<path>" -> { body: Buffer, contentType }
 const runs = new Map();    // id -> { result, status }
 const github = { calls: [], fail: 0 };
+const n8n = { calls: [], fail: false };
 let bucketCreated = false;
 
 const server = http.createServer((req, res) => {
@@ -33,6 +34,14 @@ const server = http.createServer((req, res) => {
       github.calls.push({ repo: m[1], workflow: m[2], auth: req.headers.authorization, body: JSON.parse(body.toString() || '{}') });
       if (github.fail) return send(github.fail, { message: 'nope' });
       return send(204);
+    }
+    // n8n "save video to Drive" webhook
+    if (p === '/webhook/drive' && req.method === 'POST') {
+      const text = body.toString('latin1');
+      const name = (/name="name"\r\n\r\n([^\r]*)/.exec(text) || [])[1];
+      n8n.calls.push({ name, bytes: body.length, hasFile: /name="file"; filename="[^"]+"/.test(text) });
+      if (n8n.fail) return send(500, { message: 'Workflow error' });
+      return send(200, { id: 'DRV' + n8n.calls.length, url: 'https://drive.google.com/file/d/DRV' + n8n.calls.length + '/view' });
     }
     // PostgREST
     if (p === '/rest/v1/ace_runs') {
@@ -218,6 +227,70 @@ x = await api('POST', '/api/jobs/routerun0001/render-videos');
 check('route: clicking again while rendering is refused', x.status === 409 && /already in progress/.test(x.json.error) && github.calls.length === 1, JSON.stringify(x));
 x = await api('GET', '/api/jobs/routerun0001/videos');
 check('route: status now shows the render is queued', x.json.status === 'queued', JSON.stringify(x));
+// ---- voice choice ----
+x = await api('GET', '/api/voices');
+check('route: voices fall back to stock voices without an ElevenLabs key', x.status === 200 && x.json.source === 'stock' && x.json.voices.length >= 5 && x.json.voices.every((v) => v.id && v.name), JSON.stringify(x).slice(0, 200));
+runs.set('routerun0004', { status: 'success', result: { videos: [{ id: 1, scenes: [{ vo: 'x' }] }] } });
+const post = async (p, body) => { const y = await fetch('http://127.0.0.1:' + PORT + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: y.status, json: await y.json().catch(() => null) }; };
+x = await post('/api/jobs/routerun0004/render-videos', { voiceId: 'bad id!' });
+check('route: a malformed voice id is rejected before anything starts', x.status === 400 && !github.calls.some((c) => c.body.inputs.run_id === 'routerun0004'), JSON.stringify(x));
+x = await post('/api/jobs/routerun0004/render-videos', { voiceId: 'pNInz6obpgDQGcFmaJgB' });
+const vc = github.calls.find((c) => c.body.inputs.run_id === 'routerun0004');
+check('route: the chosen voice is passed to the workflow', x.status === 200 && vc && vc.body.inputs.voice_id === 'pNInz6obpgDQGcFmaJgB' && vc.body.inputs.drive_only === 'false', JSON.stringify(vc));
+x = await api('GET', '/api/jobs/routerun0004/videos');
+check('route: the chosen voice is shown in the status', x.json.voiceId === 'pNInz6obpgDQGcFmaJgB', JSON.stringify(x.json));
+
+const { listVoices } = await import('../app/server/voices.js');
+let v = await listVoices({ apiKey: 'k', base, fetchImpl: async () => ({ ok: false, status: 401, json: async () => ({}) }) });
+check('voices: a key without Voices:Read falls back to stock voices', v.source === 'stock' && v.voices.length >= 5);
+v = await listVoices({ apiKey: 'k', fetchImpl: async () => ({ ok: true, json: async () => ({ voices: [{ voice_id: 'AAAAAAAAAAAAAAAAAAAA', name: 'Mine', labels: { accent: 'british', gender: 'male' }, preview_url: 'https://x/p.mp3' }, { voice_id: 'bad', name: 'Junk' }] }) }) });
+check('voices: lists the account voices with notes and previews, skipping junk ids', v.source === 'account' && v.voices.length === 1 && v.voices[0].name === 'Mine' && /british/.test(v.voices[0].note) && v.voices[0].previewUrl === 'https://x/p.mp3', JSON.stringify(v));
+
+// ---- Google Drive copies through n8n ----
+reset();
+x = await api('POST', '/api/jobs/routerun0001/save-to-drive');
+check('route: save-to-drive needs rendered videos first', x.status === 409 && /Render the videos first/.test(x.json.error), JSON.stringify(x));
+const DR = 'driverun0001';
+runs.set(DR, { status: 'success', result: { videos: [{ id: 1, scenes: [{ vo: 'x' }] }, { id: 2, scenes: [{ vo: 'y' }] }] } });
+objects.set(DR + '/1-first.mp4', { body: Buffer.alloc(20000, 7), contentType: 'video/mp4' });
+objects.set(DR + '/2-second.mp4', { body: Buffer.alloc(25000, 8), contentType: 'video/mp4' });
+objects.set(DR + '/status.json', { body: Buffer.from(JSON.stringify({ status: 'done', requestedAt: new Date().toISOString() })), contentType: 'application/json' });
+x = await api('POST', '/api/jobs/' + DR + '/save-to-drive');
+const dc = github.calls.find((c) => c.body.inputs.run_id === DR);
+check('route: save-to-drive starts the workflow in Drive-only mode (no re-render)', x.status === 200 && dc && dc.body.inputs.drive_only === 'true', JSON.stringify(x) + JSON.stringify(dc));
+x = await api('GET', '/api/jobs/' + DR + '/videos');
+check('route: status says the Drive copy is in progress', x.json.task === 'drive' && x.json.status === 'queued', JSON.stringify(x.json));
+
+const hookUrl = base + '/webhook/drive';
+r = await run('video/ci/drive.mjs', [DR, '--from-storage', '--strict'], { N8N_DRIVE_WEBHOOK_URL: hookUrl });
+check('drive: downloads each stored video and sends it to n8n with a run-prefixed name', r.code === 0 && n8n.calls.length === 2 && n8n.calls.every((c) => c.hasFile && c.bytes > 20000) && n8n.calls[0].name === 'driverun-1-first.mp4', r.err + r.out + JSON.stringify(n8n.calls));
+x = await api('GET', '/api/jobs/' + DR + '/videos');
+check('drive: the app gets a Drive link for every video', x.json.videos.length === 2 && x.json.videos.every((q) => /drive\.google\.com\/file\/d\/DRV/.test(q.driveUrl)) && x.json.videos.every((q) => !/drive\.json/.test(q.name)), JSON.stringify(x.json.videos));
+
+n8n.fail = true; n8n.calls.length = 0;
+const dir2 = path.join(tmp, 'out2'); fs.mkdirSync(dir2); fs.writeFileSync(path.join(dir2, '3-third.mp4'), Buffer.alloc(30000, 3));
+r = await run('video/ci/drive.mjs', [DR, dir2], { N8N_DRIVE_WEBHOOK_URL: hookUrl });
+check('drive: a failing n8n does not fail the render job (best effort)', r.code === 0 && /failed for 3-third/.test(r.err), r.err);
+const note = JSON.parse(objects.get(DR + '/3-third.mp4.drive.json').body.toString());
+check('drive: the failure is recorded for the app instead of a link', !!note.error && !note.url, JSON.stringify(note));
+r = await run('video/ci/drive.mjs', [DR, '--from-storage', '--strict'], { N8N_DRIVE_WEBHOOK_URL: hookUrl });
+check('drive: --strict fails the job when nothing could be uploaded', r.code === 1, 'exit ' + r.code);
+r = await run('video/ci/drive.mjs', [DR, dir2], { N8N_DRIVE_WEBHOOK_URL: '' });
+check('drive: without the webhook URL the optional step is a harmless no-op', r.code === 0 && /not set/.test(r.err), r.err);
+r = await run('video/ci/drive.mjs', [DR, '--from-storage', '--strict'], { N8N_DRIVE_WEBHOOK_URL: '' });
+check('drive: ...but the explicit button reports it (strict)', r.code === 1, 'exit ' + r.code);
+n8n.fail = false;
+
+r = await run('video/ci/finish.mjs', [], { RUN_ID: DR, PREPARE_RESULT: 'success', RENDER_RESULT: 'skipped', DRIVE_RESULT: 'success', DRIVE_ONLY: 'true' });
+st = JSON.parse(objects.get(DR + '/status.json').body.toString());
+check('finish: a Drive-only run (render skipped) ends as done', r.code === 0 && st.status === 'done' && !st.message, JSON.stringify(st));
+r = await run('video/ci/finish.mjs', [], { RUN_ID: DR, PREPARE_RESULT: 'success', RENDER_RESULT: 'skipped', DRIVE_RESULT: 'failure', DRIVE_ONLY: 'true' });
+st = JSON.parse(objects.get(DR + '/status.json').body.toString());
+check('finish: a failed Drive copy leaves the videos as done and explains', st.status === 'done' && /Google Drive failed/.test(st.message), JSON.stringify(st));
+
+const wf = fs.readFileSync(path.join(root, '.github', 'workflows', 'render-videos.yml'), 'utf8');
+check('workflow: declares voice_id and drive_only inputs, the Drive secret, and a Drive-only job', /voice_id:/.test(wf) && /drive_only:/.test(wf) && /N8N_DRIVE_WEBHOOK_URL: \$\{\{ secrets\.N8N_DRIVE_WEBHOOK_URL \}\}/.test(wf) && /\n  drive:\n/.test(wf) && /inputs\.voice_id \|\| vars\.ELEVENLABS_VOICE_ID/.test(wf));
+
 srv.kill();
 
 server.close();

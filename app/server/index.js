@@ -13,6 +13,7 @@ import { createSupabaseStore, createLocalStore } from './store.js';
 import { createAuth, rateLimiter } from './auth.js';
 import { createStorage } from './storage.js';
 import { createRenderer } from './render.js';
+import { listVoices, isVoiceId } from './voices.js';
 
 dns.setDefaultResultOrder('ipv4first');
 if (net.setDefaultAutoSelectFamilyAttemptTimeout) net.setDefaultAutoSelectFamilyAttemptTimeout(5000);
@@ -382,8 +383,29 @@ app.post('/api/jobs/:id/render-videos', authenticate, approved, async (req, res)
     if (!renderer.configured) return res.status(409).json({ error: 'Online rendering is not set up yet. Add GH_DISPATCH_TOKEN (see SETUP.md), or render on your computer with the command shown.' });
     if (job.status !== 'success' || !job.result) return res.status(409).json({ error: 'Wait until the run has finished.' });
     if (!(job.result.videos || []).some((v) => (v.scenes || []).length)) return res.status(409).json({ error: 'This run has no video storyboards (it came from an older workflow version). Run it again.' });
-    const r = await renderer.dispatch(job.id, { by: req.user.email || 'user', force: true });
+    const voiceId = String((req.body && req.body.voiceId) || '').trim();
+    if (voiceId && !isVoiceId(voiceId)) return res.status(400).json({ error: 'That does not look like an ElevenLabs voice id.' });
+    const r = await renderer.dispatch(job.id, { by: req.user.email || 'user', force: true, voiceId });
     if (!r.started) return res.status(409).json({ error: r.reason === 'in-progress' ? 'A render is already in progress for this run.' : 'Could not start the render.' });
+    res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// Voices to choose from for the voiceover (the account's own when the key allows listing, else stock voices).
+app.get('/api/voices', authenticate, approved, async (_req, res) => {
+  try { res.json(await listVoices({ apiKey: pick('ELEVENLABS_API_KEY') })); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// "Save to Google Drive": the workflow copies the already-rendered MP4s to Drive through n8n (no re-render, no credits).
+app.post('/api/jobs/:id/save-to-drive', authenticate, approved, async (req, res) => {
+  try {
+    const job = await ownedJob(req, res);
+    if (!job) return;
+    if (!renderer.configured) return res.status(409).json({ error: 'Online rendering is not set up yet (GH_DISPATCH_TOKEN).' });
+    const st = await renderer.status(job.id);
+    if (!st.videos || !st.videos.length) return res.status(409).json({ error: 'Render the videos first.' });
+    const r = await renderer.dispatch(job.id, { by: req.user.email || 'user', force: true, task: 'drive' });
+    if (!r.started) return res.status(409).json({ error: r.reason === 'in-progress' ? 'Something is already running for this run.' : 'Could not start.' });
     res.json({ ok: true });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });

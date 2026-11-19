@@ -39,6 +39,15 @@ for (const name of ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY', 'ELEVENLABS_API_KEY'
   const r = gh(['secret', 'set', name, '--repo', repo], value);
   console.log(r.status === 0 ? `  set      ${name}` : `  FAILED   ${name}: ${(r.stderr || '').trim().split('\n')[0]}`);
 }
+// Google Drive copies: the private n8n webhook URL (built from workflow/.drive-webhook-path after tools/deploy_drive_n8n.js)
+let driveUrl = env.N8N_DRIVE_WEBHOOK_URL;
+if (!driveUrl) {
+  try { driveUrl = (env.N8N_BASE_URL || '').replace(/\/+$/, '') + '/webhook/' + fs.readFileSync(path.join(root, 'workflow', '.drive-webhook-path'), 'utf8').trim(); } catch { /* not deployed yet */ }
+}
+if (driveUrl && /^https?:\/\//.test(driveUrl)) {
+  const r = gh(['secret', 'set', 'N8N_DRIVE_WEBHOOK_URL', '--repo', repo], driveUrl);
+  console.log(r.status === 0 ? '  set      N8N_DRIVE_WEBHOOK_URL' : '  FAILED   N8N_DRIVE_WEBHOOK_URL: ' + (r.stderr || '').trim().split('\n')[0]);
+} else console.log('  skipped  N8N_DRIVE_WEBHOOK_URL (run node tools/deploy_drive_n8n.js first; optional)');
 if (env.ELEVENLABS_VOICE_ID) {
   const r = gh(['variable', 'set', 'ELEVENLABS_VOICE_ID', '--repo', repo, '--body', env.ELEVENLABS_VOICE_ID]);
   console.log(r.status === 0 ? '  set      ELEVENLABS_VOICE_ID (repository variable)' : `  FAILED   ELEVENLABS_VOICE_ID: ${(r.stderr || '').trim().split('\n')[0]}`);

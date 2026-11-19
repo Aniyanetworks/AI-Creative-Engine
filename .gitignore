@@ -8,6 +8,7 @@
 # It is stored in this file and baked into the generated workflow JSON, so both stay local.
 # Regenerate the workflow any time with:  node tools/build_workflow.js
 workflow/.webhook-path
+workflow/.drive-webhook-path
 workflow/creative-engine.n8n.json
 
 # ---- Dependencies and build output ----
