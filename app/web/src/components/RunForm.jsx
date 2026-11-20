@@ -102,7 +102,7 @@ export default function RunForm({ disabled, onStarted }) {
             <input id="bn" placeholder="Only if you want to override what we find" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
           </div>
           <div>
-            <label htmlFor="cn">Competitor ads or notes <Hint id="run.notes" /></label>
+            <label htmlFor="cn">Competitor ads or notes</label>
             <textarea id="cn" rows={4} placeholder="Paste ads you found in the Meta Ad Library (advertiser, hook, offer). Without this, the competitor analysis is marked as inferred." value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
         </div>

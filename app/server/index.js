@@ -106,7 +106,7 @@ const metaReady = () => meta.configured && secrets.configured;
 
 // Usage and cost report (see app/server/usage.js)
 const usage = createUsage({ store, prices: pricesFrom(pick), profiles: store.profiles });
-const writer = createWriter({ hookUrl: writeHook, n8nApi: (p) => n8n(p), onDone: (job, w) => usage.recordWrite(job, { inTok: (w.usage && w.usage.input_tokens) || 0, outTok: (w.usage && w.usage.output_tokens) || 0, kind: w.kind, op: w.op, count: w.count, model: w.model || models.defaults.claude }, w.by) });
+const writer = createWriter({ hookUrl: writeHook, n8nApi: (p) => n8n(p), onDone: (job, w) => usage.recordWrite(job, { inTok: (w.usage && w.usage.input_tokens) || 0, outTok: (w.usage && w.usage.output_tokens) || 0, kind: w.kind, op: w.op, count: w.count, searches: w.searches, area: w.area, model: w.model || models.defaults.claude }, w.by) });
 const images = createImages({ hookUrl: imageHook, driveHookUrl: driveHook, n8nApi: (p) => n8n(p), quality: pick('IMAGE_QUALITY') || 'medium', onDone: (job, s) => usage.recordImage(job, s.image_quality || 'medium', s.image_by, s.image_model || models.defaults.image) });
 
 const AUTH_ON = store.kind === 'supabase' && pick('AUTH_REQUIRED').toLowerCase() !== 'false';
@@ -472,8 +472,17 @@ app.post('/api/jobs/:id/write', authenticate, approved, async (req, res) => {
     if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
     if (job.status !== 'success' || !job.result) return res.status(409).json({ error: 'Wait until the run has finished.' });
     const b = req.body || {};
-    const result = await writer.start(job, { model: models.pick('claude', b.model), kind: b.kind, op: b.op, count: b.count, instruction: b.instruction, id: parseInt(b.id, 10), ids: Array.isArray(b.ids) ? b.ids.map((x) => parseInt(x, 10)).filter(Number.isFinite).slice(0, 50) : undefined, by: req.user.id });
+    const result = await writer.start(job, { model: models.pick('claude', b.model), kind: b.kind, op: b.op, area: b.area, keywords: Array.isArray(b.keywords) ? b.keywords.slice(0, 8) : undefined, count: b.count, instruction: b.instruction, id: parseInt(b.id, 10), ids: Array.isArray(b.ids) ? b.ids.map((x) => parseInt(x, 10)).filter(Number.isFinite).slice(0, 50) : undefined, by: req.user.id });
     await store.update(job.id, { result });
+    res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+app.post('/api/jobs/:id/competitors/remove', authenticate, approved, async (req, res) => {
+  try {
+    const job = await store.get(req.params.id);
+    if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
+    const result = writer.removeArea(job, String((req.body && req.body.key) || ''));
+    if (result) await store.update(job.id, { result });
     res.json({ ok: true });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });

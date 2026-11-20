@@ -40,7 +40,7 @@ export default function Users({ myEmail }) {
   return (
     <div>
       <div className="row between" style={{ marginBottom: 18 }}>
-        <div><h2>Users <Hint id="users.page" /></h2><p className="muted small">Approve people before they can run jobs. Every run spends your API credits.</p></div>
+        <div><h2>Users</h2><p className="muted small">Approve people before they can run jobs. Every run spends your API credits.</p></div>
         <button className="ghost" onClick={load}><RefreshCw size={13} /> Refresh</button>
       </div>
       {err && <div className="banner err" role="alert"><AlertTriangle size={16} />{err}</div>}

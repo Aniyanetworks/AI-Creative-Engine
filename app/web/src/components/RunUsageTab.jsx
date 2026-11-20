@@ -15,6 +15,7 @@ function describe(e) {
   if (e.kind === 'claude') {
     if (e.source === 'write') {
       const what = NOUN[e.what] || 'items';
+      if (e.op === 'research') return 'Local competitor research' + (e.area ? ': ' + e.area : '') + (e.searches ? ' (' + e.searches + ' web searches)' : '');
       return e.op === 'tags' ? 'Hashtags for ' + what : e.op === 'update' ? 'Rewrote one of the ' + what : 'Wrote ' + (e.count || 'more') + ' more ' + what;
     }
     return 'The run: brief, competitors, hooks, ads and scripts';

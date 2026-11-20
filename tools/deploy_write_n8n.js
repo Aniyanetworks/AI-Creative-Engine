@@ -4,6 +4,8 @@
 // Behind the app's "Generate more" and "Rewrite" buttons. One private webhook, two jobs, for hooks, static ads and video scripts:
 //   op "more"    write N NEW items that differ from the existing ones (optionally following the user's instruction)
 //   op "update"  rewrite ONE existing item, applying the user's instruction
+//   op "tags"    write hashtags for posts that have none
+//   op "research" area-by-area local competitor research with Claude's web search tool (real businesses, with source links)
 // Claude is called with the Anthropic credential kept in n8n, using the same prompt files as the main workflow plus a short
 // override. The webhook answers at once with its execution id; the app then reads that (small, text-only) execution.
 // The private webhook path is kept in workflow/.write-webhook-path (git-ignored).
@@ -31,6 +33,14 @@ const code = (name, position, jsCode) => ({ id: id(), name, type: 'n8n-nodes-bas
 const BUILD = `
 const b = $('Receive').first().json.body || {};
 const PROMPTS = ${JSON.stringify(PROMPTS)};
+if (b.op === 'research') {
+  const area = String(b.area || '').replace(/ +/g, ' ').trim().slice(0, 80);
+  if (!area) throw new Error('Name an area to research.');
+  const keywords = (Array.isArray(b.keywords) ? b.keywords : []).map((x) => String(x).slice(0, 60)).slice(0, 8);
+  const system = 'You are a local-market competitor researcher for a paid-social strategist. Use the web search tool to find REAL businesses that compete with the brand in the given AREA (a city or region; include its main towns if it is a region). Find 4 to 8 competitors, preferring those with a strong local presence or visible advertising. For each one, report only what you actually saw in search results or on their pages (or on public ad-library pages if they came up): name, website, what they do, the offers they push, claims or hooks visible on their site or ads, price signals if public, strengths, gaps or weaknesses, the channels they use, and the source URLs. NEVER invent a competitor, quote, price, rating or claim: if you could not find something, use null or an empty list, and lower the confidence. Then give local notes (how crowded the market is, seasonality, language or local terms worth using), opportunities (angles the brand can own in this area, tied to what the competitors are not saying), and caveats. Return ONLY one JSON object, with no text before or after it, shaped like: {"area": string, "summary": string, "competitors": [{"name": string, "website": string|null, "what_they_do": string, "offers": [string], "claims_or_hooks_seen": [string], "price_signals": string|null, "strengths": [string], "gaps": [string], "channels": [string], "source_urls": [string], "confidence": "high"|"medium"|"low"}], "local_notes": [string], "opportunities": [string], "caveats": [string]}';
+  const user = 'BRAND BRIEF:\\n' + JSON.stringify(b.brief || {}) + '\\n\\nAREA: ' + area + (keywords.length ? '\\nSEARCH KEYWORDS: ' + keywords.join('; ') : '');
+  return [{ json: { kind: 'competitors', op: 'research', area, count: 1, nextId: 0, _req: { model: /^[A-Za-z0-9][A-Za-z0-9._-]{2,59}$/.test(String(b.model || '')) ? String(b.model) : ${JSON.stringify(MODEL)}, max_tokens: 8000, system, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }], messages: [{ role: 'user', content: user }] } } }];
+}
 const kind = ['hooks', 'statics', 'videos'].includes(b.kind) ? b.kind : null;
 if (!kind) throw new Error('Unknown kind.');
 const op = b.op === 'update' ? 'update' : b.op === 'tags' ? 'tags' : 'more';
@@ -67,6 +77,30 @@ const PARSE = `
 const meta = $('Build').first().json;
 const resp = $input.first().json;
 if (resp.error) throw new Error('Anthropic error: ' + JSON.stringify(resp.error).slice(0, 300));
+if (meta.op === 'research') {
+  if (resp.stop_reason === 'pause_turn') throw new Error('The research took too long and was paused. Try again, or research a smaller area.');
+  if (resp.stop_reason === 'max_tokens') throw new Error('The research ran out of room. Try again.');
+  const blocks = (resp.content || []).filter((c) => c.type === 'text' && c.text && c.text.indexOf('{') >= 0);
+  const last = blocks.length ? blocks[blocks.length - 1].text : '';
+  const a1 = last.indexOf('{'), z1 = last.lastIndexOf('}');
+  if (a1 < 0 || z1 < 0) throw new Error('The research returned no result. Try again.');
+  let r;
+  try { r = JSON.parse(last.slice(a1, z1 + 1)); } catch (e) { throw new Error('The research result was not valid: ' + e.message); }
+  // Web search adds citation tags such as <cite index=...>; the page shows plain text and shows the sources separately.
+  const txt = (v, m) => String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/ +/g, ' ').trim().slice(0, m || 300);
+  const arr = (x, n, m) => (Array.isArray(x) ? x : []).map((v) => txt(v, m)).filter(Boolean).slice(0, n || 8);
+  const url = (u) => { const t = String(u || '').trim(); return /^https?:[/][/]/i.test(t) ? t.slice(0, 300) : null; };
+  const competitors = (Array.isArray(r.competitors) ? r.competitors : []).slice(0, 10).map((c) => ({
+    name: txt(c.name, 100), website: url(c.website), what_they_do: txt(c.what_they_do, 400),
+    offers: arr(c.offers, 5), claims_or_hooks_seen: arr(c.claims_or_hooks_seen, 5), price_signals: c.price_signals ? txt(c.price_signals, 200) : null,
+    strengths: arr(c.strengths, 4), gaps: arr(c.gaps, 4), channels: arr(c.channels, 6, 40), source_urls: arr((c.source_urls || []).map(url), 5, 300),
+    confidence: ['high', 'medium', 'low'].includes(c.confidence) ? c.confidence : 'low',
+  })).filter((c) => c.name);
+  if (!competitors.length) throw new Error('No competitors were found for that area. Try a nearby city or different keywords.');
+  const item = { area: meta.area, summary: txt(r.summary, 700), competitors, local_notes: arr(r.local_notes, 6), opportunities: arr(r.opportunities, 8), caveats: arr(r.caveats, 5) };
+  const su = resp.usage && resp.usage.server_tool_use;
+  return [{ json: { kind: 'competitors', op: 'research', item, usage: resp.usage || null, searches: (su && su.web_search_requests) || 0 } }];
+}
 if (resp.stop_reason === 'max_tokens') throw new Error('The model ran out of room (max_tokens). Try asking for fewer items.');
 const text = (resp.content || []).map((c) => c.text || '').join('');
 const a = text.indexOf('{'), z = text.lastIndexOf('}');

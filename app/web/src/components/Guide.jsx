@@ -10,6 +10,7 @@ const SECTIONS = [
   ] },
   { Icon: Lightbulb, title: '2. Read the results', items: [
     'Hooks, Static ads and Videos are the creative. Brief and Competitors explain what the app understood. Report is everything in one document, saved to your Drive.',
+    'Competitors has two views: the general market overview, and By area, which searches the web for real local competitors city by city, with source links and angles you can use.',
     'The Est. cost chip next to Finished shows what the run has cost so far. The Usage tab lists every charge.',
     'You can leave the page while a run works: it keeps going and is saved.',
   ] },
@@ -51,7 +52,7 @@ export default function Guide() {
       <div className="row between" style={{ flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h2 style={{ margin: 0, display: 'flex', gap: 8, alignItems: 'center' }}><BookOpen size={20} /> Guide</h2>
-          <p className="muted small" style={{ margin: '4px 0 0' }}>How everything works, in order. Small ? buttons around the app explain each feature in place.</p>
+          <p className="muted small" style={{ margin: '4px 0 0' }}>How everything works, in order. A few ? buttons explain the main features in place, and each tab has one at the right of the tab bar.</p>
         </div>
         <label className="switch" title="Show or hide the small ? hints around the app">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />

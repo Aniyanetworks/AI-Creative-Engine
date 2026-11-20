@@ -16,6 +16,7 @@ export function pricesFrom(pick) {
     claudeFamilies: { haiku: [1, 5], sonnet: [3, 15], opus: [15, 75] },
     claudeByModel: (() => { try { return JSON.parse(pick('PRICE_CLAUDE_BY_MODEL') || '{}'); } catch { return {}; } })(),
     imageMini: n('PRICE_IMAGE_MINI_MULTIPLIER', 0.35), // gpt-image-*-mini costs about a third of the full model
+    webSearch: n('PRICE_WEB_SEARCH', 0.01), // per web search the model runs (competitor research)
     videoCredits: n('ELEVENLABS_CREDITS_PER_VIDEO', 500),
     creditsPer1k: n('PRICE_ELEVENLABS_PER_1K_CREDITS', 0.2),
   };
@@ -52,8 +53,8 @@ export function createUsage({ store, prices, profiles }) {
     },
     // userId = the person who clicked (falls back to the run's owner)
     // "Generate more" / "Rewrite": more Claude tokens on an existing run (charged to whoever clicked)
-    async recordWrite(job, { inTok = 0, outTok = 0, kind, op, count, model = '' }, userId) {
-      return add({ userId: userId || job.userId, runId: job.id, kind: 'claude', units: inTok + outTok, unitLabel: 'tokens', cost: costOf.claude(inTok, outTok, model), meta: { in: inTok, out: outTok, calls: 1, source: 'write', what: kind, op, count, model } });
+    async recordWrite(job, { inTok = 0, outTok = 0, kind, op, count, model = '', searches = 0, area = '' }, userId) {
+      return add({ userId: userId || job.userId, runId: job.id, kind: 'claude', units: inTok + outTok, unitLabel: 'tokens', cost: round(costOf.claude(inTok, outTok, model) + searches * prices.webSearch), meta: { in: inTok, out: outTok, calls: 1, source: 'write', what: kind, op, count, model, searches, area } });
     },
     async recordImage(job, quality, userId, model) { return add({ userId: userId || job.userId, runId: job.id, kind: 'image', units: 1, unitLabel: 'images', quality, cost: costOf.image(1, quality, model), meta: { source: 'button', model } }); },
     async recordVideos(job, count, by, userId) { return add({ userId: userId || job.userId, runId: job.id, kind: 'video', units: count, unitLabel: 'videos', cost: costOf.video(count), meta: { credits: Math.round(count * prices.videoCredits), by: by || 'user' } }); },
@@ -72,7 +73,7 @@ export function createUsage({ store, prices, profiles }) {
         claude: { cost: sum(of('claude')), inTokens: (claude && claude.meta && claude.meta.in) || 0, outTokens: (claude && claude.meta && claude.meta.out) || 0, calls: (claude && claude.meta && claude.meta.calls) || 0 },
         images: { cost: sum(of('image')), count: of('image').reduce((a, e) => a + e.units, 0), byQuality: imgQ },
         videos: { cost: sum(of('video')), count: of('video').reduce((a, e) => a + e.units, 0), credits: of('video').reduce((a, e) => a + ((e.meta && e.meta.credits) || 0), 0) },
-        events: events.map((e) => ({ kind: e.kind, units: e.units, unitLabel: e.unitLabel, quality: e.quality, cost: e.cost, at: e.at, source: e.meta && e.meta.source, what: e.meta && e.meta.what, op: e.meta && e.meta.op, count: e.meta && e.meta.count, credits: e.meta && e.meta.credits, model: e.meta && e.meta.model })),
+        events: events.map((e) => ({ kind: e.kind, units: e.units, unitLabel: e.unitLabel, quality: e.quality, cost: e.cost, at: e.at, source: e.meta && e.meta.source, what: e.meta && e.meta.what, area: e.meta && e.meta.area, searches: e.meta && e.meta.searches, op: e.meta && e.meta.op, count: e.meta && e.meta.count, credits: e.meta && e.meta.credits, model: e.meta && e.meta.model })),
         prices,
       };
     },

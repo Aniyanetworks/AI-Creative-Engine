@@ -454,6 +454,29 @@ check('delete: a run with no result yet does not touch Drive', x.status === 200 
   check('tags: asking again when every post has tags says so', (await fail(() => w.start(job, { kind: 'statics', op: 'tags' })))?.status === 409);
   check('tags: one post can be tagged by id, and hooks never get tags', (await (async () => { const j2 = mk(); await w.start(j2, { kind: 'videos', op: 'tags', ids: [1] }); return sent.items.length === 1 && sent.items[0].title === 'V1'; })()) && (await fail(() => w.start(mk(), { kind: 'hooks', op: 'tags' })))?.status === 400);
 
+  // area-wise competitor research
+  job = mk(); exec = { status: 'running' };
+  job.result.brief.competitor_search_keywords = ['kw one', 'kw two']; job.result.brief.location = 'Waterloo Region';
+  check('research: an area is required and is cleaned of odd characters', (await fail(() => w.start(job, { op: 'research', area: '   ' })))?.status === 400);
+  await w.start(job, { op: 'research', area: '  Waterloo   Region <b>', keywords: ['extra'], by: 'u1', model: 'claude-opus-5-5' });
+  check('research: the request names the area and sends the brief and search keywords', sent.op === 'research' && sent.area === 'Waterloo Region b' && sent.keywords.join() === 'extra,kw one,kw two' && sent.brief.business_name === 'Acme' && sent.model === 'claude-opus-5-5', JSON.stringify(sent).slice(0, 240));
+  check('research: the run remembers what is being researched', job.result.write.op === 'research' && job.result.write.key === 'waterloo region b' && job.result.write.by === 'u1');
+  check('research: only one request at a time', (await fail(() => w.start(job, { op: 'research', area: 'Kitchener' })))?.status === 409);
+  exec = parseOut({ kind: 'competitors', op: 'research', searches: 3, usage: { input_tokens: 5000, output_tokens: 2000 }, item: { area: 'Waterloo Region b', summary: 'S', competitors: [{ name: 'Rival Co', website: 'https://rival.test', confidence: 'medium', source_urls: ['https://rival.test/a'], offers: [], claims_or_hooks_seen: [], strengths: [], gaps: [], channels: [], what_they_do: 'x' }], local_notes: [], opportunities: ['An angle'], caveats: [] } });
+  await w.resolve(job);
+  const area1 = job.result.local_competitors['waterloo region b'];
+  check('research: the finished area is saved on the run with its date and search count, and the pending marker is cleared', !!area1 && area1.competitors[0].name === 'Rival Co' && area1.searches === 3 && !!area1.researched_at && area1.key === 'waterloo region b' && !job.result.write, JSON.stringify(area1).slice(0, 200));
+  check('research: the usage log gets the tokens, the searches and the area', done[done.length - 1].op === 'research' && done[done.length - 1].searches === 3 && done[done.length - 1].area === 'Waterloo Region b' && done[done.length - 1].usage.input_tokens === 5000);
+  exec = { status: 'running' };
+  await w.start(job, { op: 'research', area: 'Waterloo Region b' });
+  check('research: researching the same area again refreshes it', job.result.write.key === 'waterloo region b');
+  exec = parseOut({ item: { area: 'x', competitors: [{ name: 'Newer Co', confidence: 'high', source_urls: [], offers: [], claims_or_hooks_seen: [], strengths: [], gaps: [], channels: [] }], opportunities: [], local_notes: [], caveats: [] }, searches: 1 });
+  await w.resolve(job);
+  check('research: a refresh replaces the old result for that area', job.result.local_competitors['waterloo region b'].competitors[0].name === 'Newer Co' && Object.keys(job.result.local_competitors).length === 1);
+  check('research: an area can be removed', !!w.removeArea(job, 'waterloo region b') && Object.keys(job.result.local_competitors).length === 0 && w.removeArea(job, 'nope') === null);
+  job.result.local_competitors = Object.fromEntries(Array.from({ length: 8 }, (_, i) => ['area ' + i, { area: 'Area ' + i, competitors: [] }]));
+  check('research: the number of areas per run is limited', (await fail(() => w.start(job, { op: 'research', area: 'One too many' })))?.status === 409);
+
   job = mk(); exec = { status: 'running' };
   await w.start(job, { kind: 'hooks', op: 'more', count: 3 });
   exec = { status: 'error', data: { resultData: { error: { message: 'Anthropic error: overloaded' } } } };
@@ -527,6 +550,8 @@ check('delete: a run with no result yet does not touch Drive', x.status === 200 
   const rr = await us.runReport('r1');
   check('run report: Claude tokens, images by quality and the total for one run', rr.enabled && rr.tracked && rr.claude.inTokens === 100000 && rr.claude.outTokens === 20000 && rr.claude.calls === 9 && rr.images.count === 5 && rr.images.byQuality.medium === 4 && rr.images.byQuality.high === 1 && Math.abs(rr.cost - 0.96) < 1e-9, JSON.stringify(rr));
   check('run report: a run with nothing recorded says so', (await us.runReport('nope')).tracked === false);
+  await us.recordWrite({ id: 'r9', userId: 'u1' }, { inTok: 1000000, outTok: 0, kind: 'competitors', op: 'research', searches: 4, area: 'X', model: 'claude-sonnet-5-5' }, 'u1');
+  check('usage: web searches are charged on top of the tokens (4 searches = $0.04)', Math.abs(rows.find((e) => e.runId === 'r9').cost - (3 + 0.04)) < 1e-9 && rows.find((e) => e.runId === 'r9').meta.searches === 4);
   const off = createUsage({ store: { }, prices });
   check('usage: without the usage table the app keeps working and says tracking is off', (await off.report({ viewer: { isAdmin: true } })).enabled === false);
 }

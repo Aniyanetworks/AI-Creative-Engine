@@ -147,7 +147,7 @@ One-time setup (about 5 minutes):
 
 Troubleshooting: the Videos tab shows the failure reason and a link to the GitHub Actions log. To run it by hand: GitHub > Actions > *Render videos* > Run workflow > paste the run id. A render that has not finished after 45 minutes is reported as failed. Videos over 50 MB are refused by Supabase's free plan; lower the quality in `render.mjs` (`--crf`) if that ever happens.
 
-Tests: `node tools/test_render.mjs` (141 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
+Tests: `node tools/test_render.mjs` (152 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
 
 ### Choosing the voice
 Before a render, the Videos tab has a **Voiceover voice** menu (your choice is remembered in the browser). It lists your ElevenLabs account's voices when the key has the **Voices: Read** permission (add `ELEVENLABS_API_KEY` to Netlify too, so the app can list them); otherwise it shows ElevenLabs' stock voices. Pick *Other* to paste any voice id from ElevenLabs > Voices. The choice goes to the workflow as an input and falls back to the `ELEVENLABS_VOICE_ID` repository variable.
@@ -233,4 +233,10 @@ Every post needs a confirmation, shows exactly what will happen first, and is re
 - The app is unpublished (development mode): only people with a role on it (App roles) can connect. To let anyone connect, connect a business portfolio, then use App Review.
 
 ### Hints and the Guide
-Small **?** buttons next to features explain them in place (hover, click, or tab to one and press Enter; Esc closes). They cover starting a run, the progress and cost chip, every tab, image and video tools, Generate more / Rewrite / hashtags, posting, connected accounts, usage and users. The sidebar **Guide** page walks through the whole workflow in eight short sections and has a **Show hints** switch (remembered per browser). The wording lives in `app/web/src/hints.js`; `node tools/check_hints.mjs` checks that every placed hint has text.
+A few small **?** buttons explain the main features in place (hover, click, or tab to one and press Enter; Esc closes): the run modes and AI models on the New run page, the cost chip, one per tab at the right of the tab bar (it describes everything on that tab), Render online, area research, the Post dialog, connected accounts and usage. The sidebar **Guide** page walks through the whole workflow in eight short sections and has a **Show hints** switch (remembered per browser). The wording lives in `app/web/src/hints.js`; `node tools/check_hints.mjs` checks that every placed hint has text.
+
+### Competitors by area
+Competitors tab > **By area**: type a city or region and **Find local competitors**. The n8n workflow **ACE - Write more** (op "research") asks Claude to use its **web search** tool and returns real local businesses with what they offer and say, price signals if public, strengths, gaps, channels, source links and a confidence label, plus local notes and opportunities. Each opportunity has **Write ads** (four new ad concepts built on that angle). Add up to 8 areas per run; Refresh re-researches one; Remove forgets it.
+- Costs roughly 10 to 20 cents per area (a minute of Claude plus about 3 to 6 web searches at $0.01 each; change with `PRICE_WEB_SEARCH`). It is logged in the usage report.
+- Needs web search enabled for your Anthropic organisation (Anthropic Console > Settings > Privacy > web search). Findings come from search results, so open the source links and check them before relying on a claim.
+- After updating, run `node tools/deploy_write_n8n.js` once more.
