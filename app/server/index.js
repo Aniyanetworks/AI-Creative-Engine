@@ -686,6 +686,38 @@ app.post('/api/jobs/:id/post/facebook', authenticate, approved, async (req, res)
     res.json({ ok: true, ...r, page: page.name });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
+// Videos: post a rendered video as a Facebook Page video or an Instagram Reel (the file link is a signed link Meta downloads from).
+app.post('/api/jobs/:id/post/video', authenticate, approved, async (req, res) => {
+  try {
+    const c = await postCtx(req, res, { needAd: false }); if (!c) return;
+    const { job, page, b } = c;
+    const n = parseInt(b.videoId, 10);
+    const v = (job.result.videos || []).find((x, i) => (x.id || i + 1) === n);
+    if (!v) return res.status(404).json({ error: 'Unknown video.' });
+    const st = await renderer.status(job.id);
+    const file = ((st && st.videos) || []).find((f) => f.n === n);
+    if (!file || !file.url) return res.status(409).json({ error: 'Render this video first.' });
+    const key = 'v' + n;
+    if (b.dest === 'instagram') {
+      if (b.confirm !== 'publish') return res.status(400).json({ error: 'Please confirm before posting.' });
+      if (!page.ig) return res.status(409).json({ error: 'That Page has no Instagram business account linked.' });
+      if (already(job, key, 'instagram-reel') && !b.again) return res.status(409).json({ error: 'This video was already posted to Instagram.', code: 'already' });
+      let r;
+      if (b.creationId) r = await meta.publishInstagram({ igId: page.ig.id, pageToken: page.token, creationId: String(b.creationId) });
+      else r = await meta.startInstagramReel({ igId: page.ig.id, pageToken: page.token, videoUrl: file.url, caption: captionFor(v) });
+      if (r.status === 'published') await recordPost(job, key, { dest: 'instagram-reel', page: '@' + page.ig.username, id: r.id, status: 'published', by: req.user.id });
+      return res.json({ ok: true, ...r, account: page.ig.username });
+    }
+    const mode = ['draft', 'now', 'schedule'].includes(b.mode) ? b.mode : 'draft';
+    if (b.confirm !== (mode === 'now' ? 'publish' : 'create')) return res.status(400).json({ error: 'Please confirm before posting.' });
+    const dest = 'facebook-video-' + (mode === 'now' ? 'published' : mode === 'schedule' ? 'scheduled' : 'draft');
+    if (already(job, key, dest) && !b.again) return res.status(409).json({ error: 'This video was already posted to Facebook that way.', code: 'already' });
+    const link = landing(job, b, { source: 'facebook', medium: 'organic', content: 'video-' + n });
+    const r = await meta.postFacebookVideo({ pageId: page.id, pageToken: page.token, videoUrl: file.url, title: v.title, description: captionFor(v, { link, withLink: true }), mode, scheduleAt: b.scheduleAt });
+    await recordPost(job, key, { dest, page: page.name, id: r.id, status: r.status, by: req.user.id });
+    res.json({ ok: true, ...r, page: page.name });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
 app.post('/api/jobs/:id/post/instagram', authenticate, approved, async (req, res) => {
   try {
     const c = await postCtx(req, res); if (!c) return;

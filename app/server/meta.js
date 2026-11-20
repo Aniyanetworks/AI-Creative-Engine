@@ -80,6 +80,25 @@ export function createMeta({ appId, appSecret, configId = '', version = 'v21.0',
       return { id: r.post_id || r.id, photoId: r.id, status: mode === 'now' ? 'published' : mode === 'schedule' ? 'scheduled' : 'draft' };
     },
 
+    // Facebook Page video. Meta fetches the file itself from videoUrl and processes it afterwards. Same modes as postFacebook.
+    async postFacebookVideo({ pageId, pageToken, videoUrl, description, title, mode = 'draft', scheduleAt }) {
+      const params = { file_url: videoUrl, description, title };
+      if (mode === 'now') params.published = true;
+      else if (mode === 'schedule') {
+        const t = Math.floor(new Date(scheduleAt).getTime() / 1000);
+        if (!Number.isFinite(t) || t < Date.now() / 1000 + 10 * 60 || t > Date.now() / 1000 + 75 * 86400) throw Object.assign(new Error('Pick a time between 10 minutes and 75 days from now.'), { status: 400 });
+        params.published = false; params.scheduled_publish_time = t;
+      } else params.published = false;
+      const r = await g('POST', '/' + encodeURIComponent(pageId) + '/videos', params, pageToken);
+      return { id: r.id, status: mode === 'now' ? 'published' : mode === 'schedule' ? 'scheduled' : 'draft' };
+    },
+    // Instagram Reel. Instagram needs a while to process the video, so this only starts it; the page then calls publishInstagram()
+    // with the returned creationId until it is ready.
+    async startInstagramReel({ igId, pageToken, videoUrl, caption }) {
+      const c = await g('POST', '/' + encodeURIComponent(igId) + '/media', { media_type: 'REELS', video_url: videoUrl, caption }, pageToken);
+      return { creationId: c.id, status: 'processing' };
+    },
+
     // Instagram image post (story = true makes a Story). No draft exists, so this publishes. Two quick calls; the container is
     // checked once before publishing and, if Instagram is still working on it, the caller can retry publishInstagram().
     async postInstagram({ igId, pageToken, imageUrl, caption, story }) {

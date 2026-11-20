@@ -248,3 +248,6 @@ Competitors tab > **By area**: type a city or region and **Find local competitor
 
 ### Brand colours
 In the Brief tab, **Change colours** lets you pick up to 4 colours for a run (the first is the main one); **Reset to default** goes back to the colours found on the website. Your colours are used for concept previews, new images and the next video renders. Pictures and videos already made keep their colours.
+
+### Posting videos
+On the Videos tab, a rendered video has a **Post…** button: a Facebook Page video (save as draft, schedule, or publish now) or an Instagram Reel (publishes right away; the app waits while Instagram processes it). Meta downloads the file from a temporary link, so the video must be rendered first. It uses the same Facebook connection and permissions as picture posts; Instagram Reels need the Page's linked Instagram business account.

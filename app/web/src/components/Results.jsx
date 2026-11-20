@@ -4,6 +4,7 @@ import { MoreBar, RewriteBox, TagButton } from './WriteTools.jsx';
 import ImageSettings, { QUALITIES } from './ImageSettings.jsx';
 import RunUsageTab from './RunUsageTab.jsx';
 import PostDialog from './PostDialog.jsx';
+import VideoPostDialog from './VideoPostDialog.jsx';
 import Hint from './Hint.jsx';
 import CompetitorsTab from './CompetitorsTab.jsx';
 import ReportTab from './ReportTab.jsx';
@@ -530,7 +531,8 @@ function RenderPanel({ jobId, render, ids, selected }) {
   );
 }
 
-function Videos({ pack, jobId, onChanged }) {
+function Videos({ pack, jobId, onChanged, goAccount, defaultLink }) {
+  const [postVid, setPostVid] = useState(null);
   const videos = pack.videos || [];
   const hasBoards = videos.some((v) => (v.scenes || []).length);
   const render = useRender(hasBoards ? jobId : null);
@@ -616,11 +618,12 @@ function Videos({ pack, jobId, onChanged }) {
                 <button type="button" className="ghost" disabled={busyNow || oneBusy !== null} onClick={() => openOne(v.id || i + 1)} title="Renders only this video (about 500 ElevenLabs credits); you choose the voice first">
                   {busyNow && (render.st.only || []).includes(v.id || i + 1) ? <><Loader2 size={13} className="rot" /> Rendering…</> : <><Clapperboard size={13} /> {file ? 'Render this video again' : 'Render this video'}</>}
                 </button>
-              )}<RewriteBox kind="videos" item={v} pack={pack} jobId={jobId} onChanged={onChanged} compact /><CopyBtn text={v.spoken_script} label="Copy voiceover script" />{v.primary_text && <CopyBtn text={[v.primary_text, ...((v.hashtags || []).length ? ['', v.hashtags.join(' ')] : [])].join(String.fromCharCode(10))} label="Copy ad caption" />}{v.video_url && <a className="ghost" href={v.video_url} target="_blank" rel="noreferrer">Open video <ExternalLink size={13} /></a>}</div>
+              )}{file && file.url && jobId && <button type="button" className="ghost" onClick={() => setPostVid(v.id || i + 1)} title="Post to a Facebook Page or Instagram Reels"><Send size={13} /> Post…</button>}<RewriteBox kind="videos" item={v} pack={pack} jobId={jobId} onChanged={onChanged} compact /><CopyBtn text={v.spoken_script} label="Copy voiceover script" />{v.primary_text && <CopyBtn text={[v.primary_text, ...((v.hashtags || []).length ? ['', v.hashtags.join(' ')] : [])].join(String.fromCharCode(10))} label="Copy ad caption" />}{v.video_url && <a className="ghost" href={v.video_url} target="_blank" rel="noreferrer">Open video <ExternalLink size={13} /></a>}</div>
             </article>
           );
         })}
       </div>
+      {postVid !== null && <VideoPostDialog jobId={jobId} video={postVid} defaultLink={defaultLink} goAccount={goAccount} onClose={() => setPostVid(null)} onDone={onChanged} />}
     </>
   );
 }

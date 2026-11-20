@@ -182,6 +182,20 @@ check('route: disconnecting forgets the account', x.json.connected === false);
 x = await api('POST', J + '/post/facebook', { adId: 1, pageId: 'P1', mode: 'draft', confirm: 'create' });
 check('route: after disconnecting, posting is refused again', x.status === 409);
 
+// Videos: Facebook Page video and Instagram Reel requests (stub fetch, no network)
+{
+  const calls = [];
+  const stub = createMeta({ appId: 'A', appSecret: 'S', fetchImpl: async (url, o) => { calls.push({ url: String(url), body: String((o && o.body) || '') }); return { ok: true, json: async () => ({ id: 'vid1' }) }; } });
+  const d = await stub.postFacebookVideo({ pageId: 'P1', pageToken: 't', videoUrl: 'https://x/v.mp4', description: 'hi', title: 'T', mode: 'draft' });
+  check('video: Facebook draft is unpublished and sends the file link', d.status === 'draft' && calls[0].url.includes("/P1/videos") && /published=false/.test(calls[0].body) && /file_url=https%3A%2F%2Fx%2Fv.mp4/.test(calls[0].body));
+  const n = await stub.postFacebookVideo({ pageId: 'P1', pageToken: 't', videoUrl: 'https://x/v.mp4', description: 'hi', mode: 'now' });
+  check('video: Facebook publish-now is published', n.status === 'published' && /published=true/.test(calls[1].body));
+  let bad = null; try { await stub.postFacebookVideo({ pageId: 'P1', pageToken: 't', videoUrl: 'https://x/v.mp4', mode: 'schedule', scheduleAt: new Date(Date.now() + 60000).toISOString() }); } catch (e) { bad = e; }
+  check('video: a schedule time under 10 minutes away is refused', !!bad && bad.status === 400);
+  const r = await stub.startInstagramReel({ igId: 'IG1', pageToken: 't', videoUrl: 'https://x/v.mp4', caption: 'c' });
+  check('video: Instagram Reel is started as REELS and left processing', r.status === 'processing' && r.creationId === 'vid1' && /media_type=REELS/.test(calls[calls.length - 1].body) && /video_url=/.test(calls[calls.length - 1].body));
+}
+
 srv.kill(); graph.close(); prev.close();
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(ok ? '\nALL PASS' : '\nSOME FAILED');

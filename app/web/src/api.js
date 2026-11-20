@@ -75,6 +75,7 @@ export const api = {
   metaRefresh: () => call('/meta/refresh', { method: 'POST' }),
   metaDisconnect: () => call('/meta/disconnect', { method: 'POST' }),
   postFacebook: (id, body) => call('/jobs/' + id + '/post/facebook', { method: 'POST', body }),
+  postVideo: (id, body) => call('/jobs/' + id + '/post/video', { method: 'POST', body }),
   postInstagram: (id, body) => call('/jobs/' + id + '/post/instagram', { method: 'POST', body }),
   adsSetup: (id, body) => call('/jobs/' + id + '/post/ads/setup', { method: 'POST', body }),
   adsAd: (id, body) => call('/jobs/' + id + '/post/ads/ad', { method: 'POST', body }),
