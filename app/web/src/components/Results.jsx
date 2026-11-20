@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { MoreBar, RewriteBox } from './WriteTools.jsx';
 import ImageSettings, { QUALITIES } from './ImageSettings.jsx';
 import { useModels, loadChoice, saveChoice } from '../models.js';
-import { Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
+import { Facebook, Instagram, Youtube, Music2, Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
 
 const TABS = ['Hooks', 'Static ads', 'Videos', 'Brief', 'Competitors', 'Report'];
 const TAB_ICON = { Hooks: Lightbulb, 'Static ads': ImageIcon, Videos: Video, Brief: FileText, Competitors: Swords, Report: ClipboardList };
@@ -91,6 +91,7 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake })
         <span className="ad-av" style={{ background: brand.base, color: brand.fg }}>{(brand.name || '?').trim().charAt(0).toUpperCase()}</span>
         <div className="ad-who"><b>{brand.name}</b><span>Sponsored · #{s.id} · {s.aspect} · {s.style}</span></div>
       </div>
+      <PlatformBadges aspect={s.aspect} />
       <div className="ad-cap">
         <p className={'pre' + (more ? '' : ' clamp3')}>{s.primary_text}</p>
         {String(s.primary_text || '').length > 130 && <button type="button" className="linkbtn" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}
@@ -249,6 +250,39 @@ function Tags({ list }) {
     <div className="tags">
       {list.map((t) => <span key={t} className="tagchip">{t}</span>)}
       <CopyBtn text={list.join(' ')} label="Copy tags" />
+    </div>
+  );
+}
+
+// Where each shape can run. Square images fit the Facebook and Instagram feeds; tall 9:16 pictures and videos fit Stories,
+// Reels and the vertical video feeds. (Meta's placements: feed 1:1 or 4:5; Stories and Reels 9:16.)
+const PLATFORMS = {
+  '1:1': [
+    { key: 'fb', name: 'Facebook', where: 'Feed', Icon: Facebook, tip: 'Facebook Feed, Marketplace and Search results' },
+    { key: 'ig', name: 'Instagram', where: 'Feed', Icon: Instagram, tip: 'Instagram Feed and Explore' },
+  ],
+  '9:16': [
+    { key: 'ig', name: 'Instagram', where: 'Stories · Reels', Icon: Instagram, tip: 'Instagram Stories and Reels' },
+    { key: 'fb', name: 'Facebook', where: 'Stories · Reels', Icon: Facebook, tip: 'Facebook Stories and Reels' },
+    { key: 'tt', name: 'TikTok', where: 'In-feed', Icon: Music2, tip: 'TikTok In-Feed ads (vertical)' },
+  ],
+  video: [
+    { key: 'ig', name: 'Instagram', where: 'Reels · Stories', Icon: Instagram, tip: 'Instagram Reels and Stories' },
+    { key: 'fb', name: 'Facebook', where: 'Reels · Stories', Icon: Facebook, tip: 'Facebook Reels and Stories' },
+    { key: 'tt', name: 'TikTok', where: 'In-feed', Icon: Music2, tip: 'TikTok In-Feed ads' },
+    { key: 'yt', name: 'YouTube', where: 'Shorts', Icon: Youtube, tip: 'YouTube Shorts (vertical, up to 60 seconds)' },
+  ],
+};
+
+// Small badges that say which platforms and placements an ad can be used on.
+function PlatformBadges({ aspect, video }) {
+  const list = PLATFORMS[video ? 'video' : aspect] || [];
+  if (!list.length) return null;
+  return (
+    <div className="platforms" aria-label="Where this can run">
+      {list.map(({ key, name, where, Icon, tip }) => (
+        <span key={key} className={'plat ' + key} title={tip}><Icon size={12} aria-hidden /> {name} <i>{where}</i></span>
+      ))}
     </div>
   );
 }
@@ -442,6 +476,7 @@ function Videos({ pack, jobId, onChanged }) {
           const file = files.find((f) => f.n === (v.id || i + 1));
           return (
             <article key={v.id} className="vid">
+              <PlatformBadges video />
               <div className="row between"><span className="tag" style={{ margin: 0 }}>{v.format}</span>
                 {hasBoards && ids.includes(v.id || i + 1) && ids.length > 1 && render.st && render.st.configured && (
                   <label className="pickvid"><input type="checkbox" checked={selected.includes(v.id || i + 1)} disabled={busyNow} onChange={() => toggle(v.id || i + 1)} /> Render</label>

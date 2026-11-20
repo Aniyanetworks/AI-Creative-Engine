@@ -384,3 +384,10 @@ select:hover { border-color: var(--muted); } select:focus-visible { outline: 2px
 .aimodels summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted); }
 .aimodels-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 10px; }
 .aimodels-grid label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); } .aimodels-grid select { width: 100%; color: var(--text); }
+
+/* Platform badges */
+.platforms { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 14px 8px; }
+.plat { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 9px; font-size: 12px; font-weight: 650; white-space: nowrap; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: default; }
+.plat i { font-style: normal; font-weight: 500; color: var(--muted); }
+.plat.fb svg { color: #1877f2; } .plat.ig svg { color: #d62976; } .plat.tt svg { color: #00a5a5; } .plat.yt svg { color: #e00; }
+.vid > .platforms { padding: 0 0 8px; }
