@@ -1,6 +1,8 @@
 // Voices the user can pick for the voiceover. Lists the account's ElevenLabs voices when the key allows it
 // (it needs the "Voices: Read" permission); otherwise falls back to ElevenLabs' stock voices.
+export const DEFAULT_VOICE_ID = 'BhPt5zyH4oeDFv1tYZ0N'; // used when no voice is chosen (also the fallback in video/render.mjs)
 export const STOCK_VOICES = [
+  { id: DEFAULT_VOICE_ID, name: 'Default voice', note: 'used when you do not choose' },
   { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', note: 'calm, warm woman' },
   { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', note: 'soft, friendly woman' },
   { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', note: 'young, upbeat woman' },

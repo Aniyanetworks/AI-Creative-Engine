@@ -68,7 +68,7 @@ async function loadPack() {
 
 // ---------- ElevenLabs voiceover with word timing ----------
 async function voiceover(text, file) {
-  const voice = pick('ELEVENLABS_VOICE_ID') || '21m00Tcm4TlvDq8ikWAM'; // "Rachel", a stock voice
+  const voice = pick('ELEVENLABS_VOICE_ID') || 'BhPt5zyH4oeDFv1tYZ0N'; // the app's default voice
   const model = pick('ELEVENLABS_MODEL') || 'eleven_multilingual_v2';
   const base = (pick('ELEVENLABS_BASE_URL') || 'https://api.elevenlabs.io').replace(/\/+$/, ''); // overridable for tests
   const r = await fetch(`${base}/v1/text-to-speech/${voice}/with-timestamps?output_format=mp3_44100_128`, {
