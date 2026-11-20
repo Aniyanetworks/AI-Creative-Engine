@@ -490,3 +490,24 @@ select:hover { border-color: var(--muted); } select:focus-visible { outline: 2px
 .wsgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
 .ws { border: 1px solid var(--accent); border-radius: var(--r); padding: 14px 16px; background: var(--accent-soft); display: grid; gap: 10px; align-content: space-between; } .ws p { margin: 0; font-size: 14px; line-height: 1.5; }
 .chiplist .chip { cursor: default; color: var(--text); font-size: 13px; line-height: 1.4; border-radius: 10px; padding: 4px 10px; } .chiplist .chip.bad { color: var(--bad); }
+
+/* Report: formatted document with a table of contents, print-friendly */
+.reportbar { margin-bottom: 14px; }
+.reportwrap { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; align-items: start; }
+.toc { position: sticky; top: 16px; display: grid; gap: 2px; font-size: 13px; max-height: calc(100vh - 40px); overflow-y: auto; }
+.toc b { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 6px; }
+.toc a { color: var(--muted); text-decoration: none; padding: 5px 8px; border-radius: 6px; line-height: 1.3; } .toc a:hover { background: var(--soft); color: var(--text); }
+.md { max-width: 880px; font-size: 15px; line-height: 1.65; color: var(--copy); }
+.md h2 { font-size: 24px; margin: 6px 0 12px; color: var(--text); } .md h3 { font-size: 19px; margin: 30px 0 8px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--text); }
+.md h4 { font-size: 16px; margin: 22px 0 6px; color: var(--text); } .md h5 { font-size: 14px; margin: 16px 0 4px; color: var(--text); }
+.md p { margin: 0 0 12px; } .md ul, .md ol { margin: 0 0 14px; padding-left: 22px; } .md li { margin: 4px 0; } .md li.sub { margin-left: 18px; list-style: circle; }
+.md strong { color: var(--text); } .md a { color: var(--accent); word-break: break-all; } .md code { background: var(--soft); border-radius: 4px; padding: 1px 5px; font-size: 13px; }
+.md blockquote { margin: 0 0 14px; padding: 8px 14px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+@media (max-width: 900px) { .reportwrap { grid-template-columns: 1fr; } .toc { position: static; max-height: none; } }
+@media print {
+  body * { visibility: hidden; }
+  .reportdoc, .reportdoc * { visibility: visible; }
+  .reportdoc { position: absolute; left: 0; top: 0; width: 100%; max-width: none; color: #000; font-size: 12pt; }
+  .reportdoc a { color: #000; text-decoration: underline; }
+  .reportdoc h3 { break-after: avoid; } .reportdoc li { break-inside: avoid; }
+}

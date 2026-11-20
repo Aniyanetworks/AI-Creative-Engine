@@ -6,6 +6,7 @@ import RunUsageTab from './RunUsageTab.jsx';
 import PostDialog from './PostDialog.jsx';
 import Hint from './Hint.jsx';
 import CompetitorsTab from './CompetitorsTab.jsx';
+import ReportTab from './ReportTab.jsx';
 import { useModels, loadChoice, saveChoice } from '../models.js';
 import { Send, Wallet, Facebook, Instagram, Youtube, Music2, Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
 
@@ -617,16 +618,7 @@ function Competitors({ pack, jobId, onChanged }) {
 }
 
 function Report({ pack }) {
-  return (
-    <>
-      <div className="row gap">
-        <CopyBtn text={pack.report_markdown} label="Copy report" />
-        <button type="button" className="ghost" onClick={() => download((pack.business || 'ad-pack').replace(/\W+/g, '-').toLowerCase() + '.md', pack.report_markdown, 'text/markdown')}>Download .md</button>
-        <button type="button" className="ghost" onClick={() => download('ad-pack.json', JSON.stringify(pack, null, 2), 'application/json')}><Download size={13} /> Download .json</button>
-      </div>
-      <pre className="report">{pack.report_markdown}</pre>
-    </>
-  );
+  return <ReportTab pack={pack} />;
 }
 
 export default function Results({ pack, jobId, onChanged, goAccount, defaultLink }) {

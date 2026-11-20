@@ -15,7 +15,7 @@ export const HINTS = {
   'tab.Brief': { title: 'Brief', text: 'What the app understood about the business: what they do, who they sell to, proof it found on the site, and claims to check with the client before running ads.' },
   'tab.Competitors': { title: 'Competitors', text: 'Two views. By area researches real local competitors city by city (with source links). Market overview is the general analysis from the first run: overused angles and the gaps your ads can take.' },
   'comp.area': { title: 'Area-wise research', text: 'Type a city or region and the app searches the web for businesses competing there: what they offer and say, their strengths and gaps, and angles you can own. Add several areas to compare. It costs roughly 10 to 20 cents per area. Always check the source links before using a claim.' },
-  'tab.Report': { title: 'Report', text: 'Everything in one document. It is also saved to your Google Drive folder. Use Copy or Download to share it.' },
+  'tab.Report': { title: 'Report', text: 'Everything in one readable document, with a contents list. Use Print / PDF to save it as a PDF, Copy or Download .md to share it, and Markdown to see the plain text. It includes any local competitor research you added. A copy is also saved to your Drive folder.' },
   'tab.Usage': { title: 'Usage', text: 'Every charge for this run in time order: writing tokens, images and video renders, with the model used and the estimated cost.' },
 
   // Static ads
