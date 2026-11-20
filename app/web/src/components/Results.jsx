@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
-import { MoreBar, RewriteBox } from './WriteTools.jsx';
+import { MoreBar, RewriteBox, TagButton } from './WriteTools.jsx';
 import ImageSettings, { QUALITIES } from './ImageSettings.jsx';
 import { useModels, loadChoice, saveChoice } from '../models.js';
 import { Facebook, Instagram, Youtube, Music2, Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
@@ -118,6 +118,7 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake })
       </div>
       {isFailed(s) && !busy && <p className="note bad" style={{ padding: '0 14px' }}>{s.image_status}</p>}
       <Tags list={s.hashtags} />
+      {!(s.hashtags || []).length && jobId && onChanged && <div style={{ padding: '0 14px 4px' }}><TagButton kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} ids={[s.id]} label="Add hashtags" compact /></div>}
       <div className="ad-actions">
         {canMake && (
           <button type="button" className={s.image_url ? 'ghost' : 'btn sm'} disabled={busy} onClick={() => (s.image_url ? setRefine(true) : onMake(s))} title="Makes this one image with OpenAI (about 4 cents at medium quality) and saves it to Drive">
@@ -227,6 +228,7 @@ function Statics({ pack, jobId, onChanged }) {
                   {bulk ? <><Loader2 size={13} className="rot" /> Starting…</> : <><ImageIcon size={13} /> Generate {missing.length} missing</>}
                 </button>
               ))}
+              <TagButton kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} compact />
               <MoreBar kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} />
             </div>
           )}
@@ -472,7 +474,10 @@ function Videos({ pack, jobId, onChanged }) {
   const files = (render.st && render.st.videos) || [];
   return (
     <>
-      <MoreBar kind="videos" pack={pack} jobId={jobId} onChanged={onChanged} />
+      <div className="row gap" style={{ flexWrap: 'wrap', marginBottom: 10 }}>
+        <TagButton kind="videos" pack={pack} jobId={jobId} onChanged={onChanged} compact />
+        <MoreBar kind="videos" pack={pack} jobId={jobId} onChanged={onChanged} />
+      </div>
       {hasBoards && <RenderPanel jobId={jobId} render={render} ids={ids} selected={selected} />}
       {oneErr && <div className="banner err"><AlertTriangle size={16} />{oneErr}</div>}
       <div className="cards" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
@@ -509,6 +514,7 @@ function Videos({ pack, jobId, onChanged }) {
               ) : <div className="script">{v.spoken_script}</div>}
               {v.video_stale && <p className="note" style={{ margin: 0 }}>The script was rewritten: the rendered video shows the old version. Render this video again to match.</p>}
               <Tags list={v.hashtags} />
+              {!(v.hashtags || []).length && jobId && onChanged && <div><TagButton kind="videos" pack={pack} jobId={jobId} onChanged={onChanged} ids={[v.id]} label="Add hashtags" compact /></div>}
               {oneOpen === (v.id || i + 1) && (
                 <div className="onebox">
                   <b className="small">Render video {v.id || i + 1} only</b>

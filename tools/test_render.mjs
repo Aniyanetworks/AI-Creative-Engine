@@ -442,6 +442,18 @@ check('delete: a run with no result yet does not touch Drive', x.status === 200 
   await w.resolve(job);
   check('write: a rewritten video script keeps its render fields', job.result.videos[0].title === 'V1 new' && job.result.videos[0].video_status === 'storyboard ready' && job.result.videos[0].rewritten === true);
 
+  // hashtags for posts that have none (runs made before tags existed)
+  job = mk(); exec = { status: 'running' };
+  job.result.statics.push({ id: 2, headline: 'No tags', primary_text: 'x', aspect: '9:16' }, { id: 3, headline: 'Has tags', primary_text: 'y', aspect: '1:1', hashtags: ['#A'] });
+  await w.start(job, { kind: 'statics', op: 'tags' });
+  check('tags: only posts without hashtags are sent, with what Claude needs to write them', sent.op === 'tags' && sent.items.length === 2 && sent.items.map((i) => i.id).join() === '1,2' && sent.items[1].headline === 'No tags' && !('image_url' in sent.items[0]), JSON.stringify(sent.items));
+  exec = parseOut({ kind: 'statics', op: 'tags', usage: { input_tokens: 50, output_tokens: 80 }, items: [{ id: 1, hashtags: ['#One', '#Two'] }, { id: 2, hashtags: ['#Three'] }] });
+  await w.resolve(job);
+  check('tags: the tags are added to those posts and nothing else is touched', job.result.statics[0].hashtags.join() === '#One,#Two' && job.result.statics[1].hashtags[0] === '#Three' && job.result.statics[2].hashtags.join() === '#A' && job.result.statics[0].headline === 'Head' && !job.result.write);
+  check('tags: the usage log gets the Claude tokens', done[done.length - 1].op === 'tags' && done[done.length - 1].count === 2);
+  check('tags: asking again when every post has tags says so', (await fail(() => w.start(job, { kind: 'statics', op: 'tags' })))?.status === 409);
+  check('tags: one post can be tagged by id, and hooks never get tags', (await (async () => { const j2 = mk(); await w.start(j2, { kind: 'videos', op: 'tags', ids: [1] }); return sent.items.length === 1 && sent.items[0].title === 'V1'; })()) && (await fail(() => w.start(mk(), { kind: 'hooks', op: 'tags' })))?.status === 400);
+
   job = mk(); exec = { status: 'running' };
   await w.start(job, { kind: 'hooks', op: 'more', count: 3 });
   exec = { status: 'error', data: { resultData: { error: { message: 'Anthropic error: overloaded' } } } };

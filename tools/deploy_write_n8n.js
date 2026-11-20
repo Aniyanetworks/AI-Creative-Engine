@@ -33,7 +33,15 @@ const b = $('Receive').first().json.body || {};
 const PROMPTS = ${JSON.stringify(PROMPTS)};
 const kind = ['hooks', 'statics', 'videos'].includes(b.kind) ? b.kind : null;
 if (!kind) throw new Error('Unknown kind.');
-const op = b.op === 'update' ? 'update' : 'more';
+const op = b.op === 'update' ? 'update' : b.op === 'tags' ? 'tags' : 'more';
+if (op === 'tags') {
+  if (kind === 'hooks') throw new Error('Hooks do not get hashtags.');
+  const items = (Array.isArray(b.items) ? b.items : []).slice(0, 20);
+  if (!items.length) throw new Error('Nothing to tag.');
+  const system = 'You write hashtags for social media ad posts. For EACH item in the user message return 6 to 8 hashtags: each a single word or camel-case phrase starting with # (for example #HVACRepair), no spaces or punctuation. Mix 2 broad industry tags, 3 to 4 niche or problem-specific tags, and 1 to 2 location or audience tags ONLY if the brand brief names a place or audience. No competitor brand names, no banned or misleading tags, no engagement-bait tags (#fyp, #followforfollow). Return ONLY a JSON object: {"tags":[{"id":<the item id>,"hashtags":["#...","#..."]}]} with one entry per item.';
+  const user = 'BRAND BRIEF:\\n' + JSON.stringify(b.brief || {}) + '\\n\\nITEMS (' + kind + '):\\n' + JSON.stringify(items);
+  return [{ json: { kind, op, count: items.length, nextId: 0, ids: items.map((x) => x.id), _req: { model: /^[A-Za-z0-9][A-Za-z0-9._-]{2,59}$/.test(String(b.model || '')) ? String(b.model) : ${JSON.stringify(MODEL)}, max_tokens: Math.min(8000, 600 + 220 * items.length), system, messages: [{ role: 'user', content: user }] } } }];
+}
 const MAX = { hooks: 10, statics: 10, videos: 5 };
 const count = op === 'update' ? 1 : Math.max(1, Math.min(MAX[kind], parseInt(b.count, 10) || 1));
 const instruction = String(b.instruction || '').replace(/ +/g, ' ').trim().slice(0, 400);
@@ -68,6 +76,12 @@ try { data = JSON.parse(text.slice(a, z + 1)); } catch (e) { throw new Error('Th
 ${CLEAN_TAGS}
 ${VIDEO_NORMALIZER}
 const CTAS = ['Learn More', 'Sign Up', 'Book Now', 'Contact Us', 'Get Quote', 'Apply Now', 'Download', 'Shop Now'];
+if (meta.op === 'tags') {
+  const got = Array.isArray(data.tags) ? data.tags : [];
+  const tagged = got.map((t) => ({ id: t.id, hashtags: cleanTags(t.hashtags) })).filter((t) => meta.ids.includes(t.id) && t.hashtags.length);
+  if (!tagged.length) throw new Error('No hashtags came back. Try again.');
+  return [{ json: { kind: meta.kind, op: 'tags', items: tagged, usage: resp.usage || null } }];
+}
 const list = data[meta.kind];
 if (!Array.isArray(list) || !list.length) throw new Error('The model returned no ' + meta.kind + '.');
 const idFor = (i) => (meta.op === 'update' ? meta.itemId : meta.nextId + i);

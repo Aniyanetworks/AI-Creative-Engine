@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Loader2, PenLine, Plus, X } from 'lucide-react';
+import { AlertTriangle, Hash, Loader2, PenLine, Plus, X } from 'lucide-react';
 import { api } from '../api.js';
 import { useModels, loadChoice, saveChoice } from '../models.js';
 
@@ -47,7 +47,7 @@ export function MoreBar({ kind, pack, jobId, onChanged }) {
       {pending && (
         <div className="banner" style={{ display: 'flex', gap: 8, alignItems: 'center' }} role="status">
           <Loader2 size={16} className="rot" />
-          {w.op === 'update' ? 'Rewriting one ' + wNames[0] + '…' : 'Writing ' + w.count + ' new ' + (w.count === 1 ? wNames[0] : wNames[1]) + '…'} This takes about half a minute; you can keep working.
+          {w.op === 'tags' ? 'Writing hashtags…' : w.op === 'update' ? 'Rewriting one ' + wNames[0] + '…' : 'Writing ' + w.count + ' new ' + (w.count === 1 ? wNames[0] : wNames[1]) + '…'} This takes about half a minute; you can keep working.
         </div>
       )}
       {w && w.error && (
@@ -78,6 +78,32 @@ export function MoreBar({ kind, pack, jobId, onChanged }) {
         </div>
       )}
     </div>
+  );
+}
+
+// "Add hashtags": for runs made before tags existed (or ads whose tags are missing). One click tags every post that has none,
+// or just one post when ids is given.
+export function TagButton({ kind, pack, jobId, onChanged, ids, label, compact }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const list = pack[kind] || [];
+  const missing = list.filter((x) => (!ids || ids.includes(x.id)) && !(Array.isArray(x.hashtags) && x.hashtags.length)).length;
+  const pending = !!pack.write && !pack.write.error;
+  if (!jobId || !onChanged || !missing) return null;
+  const go = async () => {
+    setBusy(true); setErr('');
+    try { await api.writeMore(jobId, { kind, op: 'tags', ids }); await onChanged(); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+  const mine = pending && pack.write.op === 'tags' && pack.write.kind === kind;
+  return (
+    <>
+      <button type="button" className={compact ? 'ghost' : 'btn sm'} disabled={busy || pending} onClick={go} title="Claude writes 6 to 8 hashtags for each post (about a cent)">
+        {busy || mine ? <><Loader2 size={13} className="rot" /> Tagging…</> : <><Hash size={13} /> {label || 'Add hashtags'}{!ids || ids.length > 1 ? ' (' + missing + ')' : ''}</>}
+      </button>
+      {err && <span className="note" style={{ color: 'var(--bad)' }}>{err}</span>}
+    </>
   );
 }
 

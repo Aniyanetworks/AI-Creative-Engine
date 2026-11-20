@@ -31,10 +31,20 @@ export function createWriter({ hookUrl, n8nApi, fetchImpl = fetch, now = () => D
       if (!lim) throw Object.assign(new Error('Unknown kind.'), { status: 400 });
       if (pending(result.write)) throw Object.assign(new Error('Something is already being written for this run. Wait for it to finish.'), { status: 409 });
       const list = Array.isArray(result[kind]) ? result[kind] : [];
-      const op = opts.op === 'update' ? 'update' : 'more';
+      const op = opts.op === 'update' ? 'update' : opts.op === 'tags' ? 'tags' : 'more';
+      if (op === 'tags' && kind === 'hooks') throw Object.assign(new Error('Hooks do not get hashtags.'), { status: 400 });
       const instruction = String(opts.instruction || '').replace(/ +/g, ' ').trim().slice(0, 400);
-      let count = 1; let item = null;
-      if (op === 'more') {
+      let count = 1; let item = null; let tagItems;
+      if (op === 'tags') {
+        // Posts that have no hashtags yet (all of them, or just the ids asked for)
+        const want = Array.isArray(opts.ids) && opts.ids.length ? new Set(opts.ids) : null;
+        const pick = list.filter((x) => (!want || want.has(x.id)) && !(Array.isArray(x.hashtags) && x.hashtags.length)).slice(0, 20);
+        if (!pick.length) throw Object.assign(new Error('Every post already has hashtags.'), { status: 409 });
+        count = pick.length;
+        tagItems = pick.map((x) => (kind === 'statics'
+          ? { id: x.id, headline: x.headline, primary_text: x.primary_text, overlay_text: x.overlay_text, aspect: x.aspect, angle: x.angle }
+          : { id: x.id, title: x.title, primary_text: x.primary_text, script: String(x.spoken_script || '').slice(0, 400) }));
+      } else if (op === 'more') {
         count = Math.max(1, Math.min(lim.per, parseInt(opts.count, 10) || 1));
         if (list.length + count > lim.total) throw Object.assign(new Error('That would be more than ' + lim.total + ' ' + NOUN[kind] + ' for one run. Ask for fewer, or start a new run.'), { status: 409 });
       } else {
@@ -52,7 +62,7 @@ export function createWriter({ hookUrl, n8nApi, fetchImpl = fetch, now = () => D
       try {
         const r = await fetchImpl(hookUrl, {
           method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(20000),
-          body: JSON.stringify({ op, kind, count, instruction, nextId, model: opts.model || undefined, brief: result.brief || {}, hooks: kind === 'hooks' ? undefined : (result.hooks || []).map((h) => ({ id: h.id, angle: h.angle, hook: h.hook })), existing: list.map(summary), item }),
+          body: JSON.stringify({ op, kind, count, instruction, nextId, model: opts.model || undefined, items: tagItems, brief: result.brief || {}, hooks: kind === 'hooks' ? undefined : (result.hooks || []).map((h) => ({ id: h.id, angle: h.angle, hook: h.hook })), existing: list.map(summary), item }),
         });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         started = await r.json();
@@ -77,6 +87,13 @@ export function createWriter({ hookUrl, n8nApi, fetchImpl = fetch, now = () => D
       const rd = exec && exec.data && exec.data.resultData;
       if (exec && exec.status === 'success') {
         const out = firstJson(rd && rd.runData, 'Parse');
+        if (out && w.op === 'tags' && Array.isArray(out.items) && out.items.length) {
+          const list = Array.isArray(result[w.kind]) ? result[w.kind] : [];
+          for (const t of out.items) { const it = list.find((x) => x.id === t.id); if (it) it.hashtags = t.hashtags; }
+          delete result.write;
+          if (onDone) await Promise.resolve(onDone(job, { kind: w.kind, op: 'tags', count: out.items.length, usage: out.usage, by: w.by, model: w.model })).catch(() => {});
+          return result;
+        }
         if (!out || !Array.isArray(out.items) || !out.items.length) { result.write = { ...w, error: 'Nothing usable came back. Try again.' }; return result; }
         const list = Array.isArray(result[w.kind]) ? result[w.kind] : (result[w.kind] = []);
         if (w.op === 'update') {

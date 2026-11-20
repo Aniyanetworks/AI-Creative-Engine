@@ -462,7 +462,7 @@ app.post('/api/jobs/:id/write', authenticate, approved, async (req, res) => {
     if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
     if (job.status !== 'success' || !job.result) return res.status(409).json({ error: 'Wait until the run has finished.' });
     const b = req.body || {};
-    const result = await writer.start(job, { model: models.pick('claude', b.model), kind: b.kind, op: b.op, count: b.count, instruction: b.instruction, id: parseInt(b.id, 10), by: req.user.id });
+    const result = await writer.start(job, { model: models.pick('claude', b.model), kind: b.kind, op: b.op, count: b.count, instruction: b.instruction, id: parseInt(b.id, 10), ids: Array.isArray(b.ids) ? b.ids.map((x) => parseInt(x, 10)).filter(Number.isFinite).slice(0, 50) : undefined, by: req.user.id });
     await store.update(job.id, { result });
     res.json({ ok: true });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
