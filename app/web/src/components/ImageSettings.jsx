@@ -25,7 +25,7 @@ export default function ImageSettings({ quality, onQuality, model, onModel, mode
   return (
     <div className={'popwrap' + (inline && open ? ' wide' : '')} ref={box}>
       <button type="button" className="ghost" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="dialog" title={q.name + ' quality · ' + shortLabel(list, current)}>
-        <SlidersHorizontal size={13} /> {inline ? 'Model & quality' : q.name + (current ? ' · ' + shortLabel(list, current) : '')} <ChevronDown size={13} />
+        <SlidersHorizontal size={13} /> {inline ? 'Options' : q.name + (current ? ' · ' + shortLabel(list, current) : '')} <ChevronDown size={13} />
       </button>
       {open && (
         <div className={'pop' + (inline ? ' inline' : '')} role="dialog" aria-label="Image settings">

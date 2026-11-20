@@ -95,6 +95,7 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake, i
       <div className="ad-top">
         <span className="ad-av" style={{ background: brand.base, color: brand.fg }}>{(brand.name || '?').trim().charAt(0).toUpperCase()}</span>
         <div className="ad-who"><b>{brand.name}</b><span>Sponsored · #{s.id} · {s.aspect} · {s.style}</span></div>
+        {first && <Hint id="card.actions" />}
         {onSelect && <label className="pick" title="Select this ad to post it"><input type="checkbox" checked={!!selected} onChange={() => onSelect(s.id)} aria-label={'Select ad ' + s.id} /></label>}
       </div>
       <PlatformBadges aspect={s.aspect} hint={first} />
@@ -126,18 +127,19 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake, i
       {noHook && thumbBad && <p className="note" style={{ padding: '6px 14px 0', margin: 0 }}>Preview is not set up on this server (N8N_PREVIEW_WEBHOOK_URL). The image is in Drive: use Open in Drive.</p>}
       {isFailed(s) && !busy && <p className="note bad" style={{ padding: '0 14px' }}>{s.image_status}</p>}
       <Tags list={s.hashtags} />
-      {!(s.hashtags || []).length && jobId && onChanged && <div style={{ padding: '0 14px 4px' }}><TagButton kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} ids={[s.id]} label="Add hashtags" compact /></div>}
+      {!(s.hashtags || []).length && jobId && onChanged && <div className="tagrow"><TagButton kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} ids={[s.id]} label="Add hashtags" compact /></div>}
       <div className="ad-actions">
-        {canMake && imgSettings && <ImageSettings inline {...imgSettings} />}
         {canMake && (
-          <button type="button" className={s.image_url ? 'ghost' : 'btn sm'} disabled={busy} onClick={() => (s.image_url ? setRefine(true) : onMake(s))} title="Makes this one image with OpenAI (about 4 cents at medium quality) and saves it to Drive">
+          <button type="button" className={'wide ' + (s.image_url ? 'ghost' : 'btn')} disabled={busy} onClick={() => (s.image_url ? setRefine(true) : onMake(s))} title="Makes this one image with OpenAI (about 4 cents at medium quality) and saves it to Drive">
             {busy ? <><Loader2 size={13} className="rot" /> Making…</> : <><ImageIcon size={13} /> {s.image_url ? 'Make again' : 'Generate image'}</>}
           </button>
         )}
-        {s.image_url && <a className="ghost" href={s.image_url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Open in Drive</a>}
-        <CopyBtn text={text} label="Copy ad" />
-        {first && <Hint id="card.actions" />}
-        <RewriteBox kind="statics" item={s} pack={pack} jobId={jobId} onChanged={onChanged} compact />
+        <div className="ad-tools">
+          <CopyBtn text={text} label="Copy ad" />
+          <RewriteBox kind="statics" item={s} pack={pack} jobId={jobId} onChanged={onChanged} compact />
+          {canMake && imgSettings && <ImageSettings inline {...imgSettings} />}
+          {s.image_url && <a className="ghost" href={s.image_url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Open in Drive</a>}
+        </div>
       </div>
       {refine && (
         <div className="refine">
