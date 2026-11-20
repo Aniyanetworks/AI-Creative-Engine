@@ -18,6 +18,8 @@ import { createDrive } from './drive.js';
 import { createImages } from './images.js';
 import { createWriter } from './writer.js';
 import { createModels } from './models.js';
+import { createSecrets } from './secrets.js';
+import { createMeta, captionFor, withUtm } from './meta.js';
 import { createUsage, pricesFrom, claudeUsageFromRunData } from './usage.js';
 
 dns.setDefaultResultOrder('ipv4first');
@@ -32,8 +34,9 @@ const WORKFLOW_NAME = 'AI Creative Engine: URL to Ad Pack';
 
 // ---- config from the project's .env (never sent to the browser) ----
 const env = {};
+// ACE_IGNORE_DOTENV=1 (used by the offline tests) keeps a test server from picking up the real keys in .env.
 try {
-  for (const line of fs.readFileSync(path.join(projectRoot, '.env'), 'utf8').split(/\r?\n/)) {
+  if (!process.env.ACE_IGNORE_DOTENV) for (const line of fs.readFileSync(path.join(projectRoot, '.env'), 'utf8').split(/\r?\n/)) {
     const i = line.indexOf('=');
     if (i > 0 && !line.trim().startsWith('#')) env[line.slice(0, i).trim()] = line.slice(i + 1).trim().replace(/^['"]|['"]$/g, '');
   }
@@ -53,7 +56,7 @@ const SUPABASE_URL = pick('SUPABASE_URL').replace(/\/+$/, '');
 const SUPABASE_KEY = pick('SUPABASE_SERVICE_KEY');
 const store = SUPABASE_URL && SUPABASE_KEY
   ? createSupabaseStore(SUPABASE_URL, SUPABASE_KEY)
-  : createLocalStore(SERVERLESS ? path.join(os.tmpdir(), 'ace-data') : path.join(here, 'data'));
+  : createLocalStore(SERVERLESS ? path.join(os.tmpdir(), 'ace-data') : (pick('DATA_DIR') || path.join(here, 'data')));
 const FINAL = new Set(['success', 'error']);
 
 // ---- accounts: Supabase Auth + admin approval (only when Supabase storage is configured) ----
@@ -93,6 +96,13 @@ if (!writeHook) {
 }
 
 const models = createModels(pick);
+
+// ---- Connected Meta accounts and posting (see app/server/meta.js). Every person connects their OWN Facebook account. ----
+const secrets = createSecrets(pick('TOKEN_ENC_KEY'));
+const meta = createMeta({ appId: pick('META_APP_ID'), appSecret: pick('META_APP_SECRET'), ...(pick('META_GRAPH_URL') ? { graphBase: pick('META_GRAPH_URL') } : {}), ...(pick('META_DIALOG_URL') ? { dialogBase: pick('META_DIALOG_URL') } : {}), ...(pick('META_API_VERSION') ? { version: pick('META_API_VERSION') } : {}) });
+const publicBase = (pick('PUBLIC_URL') || process.env.URL || '').replace(/\/+$/, '');
+const metaRedirect = pick('META_REDIRECT_URI') || (publicBase ? publicBase + '/api/meta/callback' : 'http://localhost:' + PORT + '/api/meta/callback');
+const metaReady = () => meta.configured && secrets.configured;
 
 // Usage and cost report (see app/server/usage.js)
 const usage = createUsage({ store, prices: pricesFrom(pick), profiles: store.profiles });
@@ -547,6 +557,153 @@ app.get('/api/usage', authenticate, approved, async (req, res) => {
 
 // The AI models that can be chosen (and the defaults), for the pickers in the app.
 app.get('/api/models', authenticate, approved, (_req, res) => res.json({ claude: models.claude, image: models.image, defaults: models.defaults }));
+
+// ---- Meta: connect, status, disconnect ----
+// Connected accounts belong to a signed-in person; in local single-user mode (no accounts) they belong to "local".
+const uidOf = (req) => req.user.id || (store.kind === 'local' ? 'local' : null);
+async function loadConn(req) {
+  const uid = uidOf(req);
+  if (!uid) throw Object.assign(new Error('Sign-in is needed to connect an account (sign-in is switched off for this app).'), { status: 409 });
+  const row = await store.connections.get(uid, 'meta');
+  return row ? { row, data: secrets.decrypt(row.dataEnc) } : null;
+}
+const publicConn = (c) => (c ? { connected: true, name: c.row.displayName || (c.data.me && c.data.me.name) || 'Facebook', expiresAt: c.row.expiresAt, pages: c.data.pages.map((p) => ({ id: p.id, name: p.name, ig: p.ig })), adAccounts: c.data.adAccounts } : { connected: false });
+
+app.get('/api/meta/status', authenticate, approved, async (req, res) => {
+  try {
+    const base = { configured: metaReady(), redirectUri: metaRedirect, missing: [!pick('META_APP_ID') && 'META_APP_ID', !pick('META_APP_SECRET') && 'META_APP_SECRET', !secrets.configured && 'TOKEN_ENC_KEY'].filter(Boolean) };
+    if (!metaReady() || !uidOf(req)) return res.json({ ...base, connected: false });
+    res.json({ ...base, ...publicConn(await loadConn(req)) });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+app.post('/api/meta/connect', authenticate, approved, async (req, res) => {
+  try {
+    if (!metaReady()) return res.status(409).json({ error: 'Connecting Facebook is not set up on this server yet (META_APP_ID, META_APP_SECRET, TOKEN_ENC_KEY).' });
+    if (!uidOf(req)) return res.status(409).json({ error: 'Sign-in is needed to connect an account.' });
+    const origin = String((req.body && req.body.origin) || '');
+    const okOrigin = (publicBase && origin === publicBase) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    res.json({ url: meta.authUrl(secrets.sign({ u: uidOf(req), ret: okOrigin ? origin : publicBase || '' }), metaRedirect) });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+// Facebook sends the browser back here (no Authorization header): the signed state says who started it.
+app.get('/api/meta/callback', async (req, res) => {
+  const st = secrets.configured ? secrets.verify(req.query.state) : null;
+  const back = (q) => res.redirect((st && st.ret ? st.ret : publicBase || '') + '/?' + q);
+  if (!st || !metaReady()) return res.status(400).send('This connection link expired. Go back to the app and click Connect again.');
+  if (req.query.error || !req.query.code) return back('meta=error&msg=' + encodeURIComponent(String(req.query.error_description || req.query.error || 'cancelled').slice(0, 200)));
+  try {
+    const { token, expiresAt } = await meta.exchange(String(req.query.code), metaRedirect);
+    const assets = await meta.assets(token);
+    await store.connections.put({ userId: st.u, provider: 'meta', displayName: assets.me.name, expiresAt, dataEnc: secrets.encrypt({ userToken: token, ...assets }) });
+    back('meta=connected');
+  } catch (e) { back('meta=error&msg=' + encodeURIComponent(e.message.slice(0, 200))); }
+});
+app.post('/api/meta/refresh', authenticate, approved, async (req, res) => {
+  try {
+    const c = await loadConn(req);
+    if (!c) return res.status(409).json({ error: 'Connect Facebook first.' });
+    const assets = await meta.assets(c.data.userToken);
+    await store.connections.put({ userId: uidOf(req), provider: 'meta', displayName: assets.me.name, expiresAt: c.row.expiresAt, dataEnc: secrets.encrypt({ userToken: c.data.userToken, ...assets }) });
+    res.json(publicConn({ row: { ...c.row, displayName: assets.me.name }, data: { ...c.data, ...assets } }));
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+app.post('/api/meta/disconnect', authenticate, approved, async (req, res) => {
+  try { if (uidOf(req)) await store.connections.remove(uidOf(req), 'meta'); res.json({ ok: true }); } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// ---- Meta: post an ad (one small step per request; the page drives the steps) ----
+// Nothing is sent without confirm: 'create' for paused ads and Page drafts, 'publish' for anything that goes public right away.
+async function postCtx(req, res, { needPage = true, needAd = true } = {}) {
+  const job = await store.get(req.params.id);
+  if (!job || !ownsJob(req.user, job)) { res.status(404).json({ error: 'Unknown job' }); return null; }
+  if (job.status !== 'success' || !job.result) { res.status(409).json({ error: 'Wait until the run has finished.' }); return null; }
+  const conn = await loadConn(req);
+  if (!conn) { res.status(409).json({ error: 'Connect your Facebook account first (Account > Connected accounts).' }); return null; }
+  const b = req.body || {};
+  const s = (job.result.statics || []).find((x) => x.id === parseInt(b.adId, 10));
+  if (needAd && (!s || !s.image_url)) { res.status(409).json({ error: 'Make this ad\'s image first.' }); return null; }
+  const page = conn.data.pages.find((p) => p.id === String(b.pageId || ''));
+  if (needPage && !page) { res.status(400).json({ error: 'Choose one of your Pages.' }); return null; }
+  return { job, conn, s, page, b };
+}
+async function fullImageUrl(s) {
+  const m = /[/]d[/]([A-Za-z0-9_-]+)/.exec(s.image_url || '');
+  if (!m || !previewHook) throw Object.assign(new Error('The image link service is not set up (N8N_PREVIEW_WEBHOOK_URL).'), { status: 409 });
+  const r = await fetch(previewHook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: m[1], size: 'full' }), signal: AbortSignal.timeout(8000) });
+  const j = await r.json().catch(() => null);
+  if (!r.ok || !j || !j.ready || !j.url) throw Object.assign(new Error('Drive is still preparing the picture. Try again in a few seconds.'), { status: 409 });
+  return j.url;
+}
+async function recordPost(job, adId, rec) {
+  const result = job.result;
+  result.posts = result.posts || {};
+  (result.posts[adId] = result.posts[adId] || []).push({ ...rec, at: new Date().toISOString() });
+  await store.update(job.id, { result });
+}
+const already = (job, adId, dest) => ((job.result.posts || {})[adId] || []).some((p) => p.dest === dest);
+const slugOf = (job) => String((job.result.brief && job.result.brief.business_name) || job.businessName || 'ads').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'ads';
+const landing = (job, b, extra) => withUtm(String(b.link || job.url), { campaign: slugOf(job), ...extra });
+
+app.post('/api/jobs/:id/post/facebook', authenticate, approved, async (req, res) => {
+  try {
+    const c = await postCtx(req, res); if (!c) return;
+    const { job, s, page, b } = c;
+    const mode = ['draft', 'now', 'schedule'].includes(b.mode) ? b.mode : 'draft';
+    if (b.confirm !== (mode === 'now' ? 'publish' : 'create')) return res.status(400).json({ error: 'Please confirm before posting.' });
+    const dest = 'facebook-' + (mode === 'now' ? 'published' : mode === 'schedule' ? 'scheduled' : 'draft');
+    if (already(job, s.id, dest) && !b.again) return res.status(409).json({ error: 'This ad was already posted to Facebook that way.', code: 'already' });
+    const link = landing(job, b, { source: 'facebook', medium: 'organic', content: 'ad-' + s.id });
+    const r = await meta.postFacebook({ pageId: page.id, pageToken: page.token, imageUrl: await fullImageUrl(s), caption: captionFor(s, { link, withLink: true }), mode, scheduleAt: b.scheduleAt });
+    await recordPost(job, s.id, { dest, page: page.name, id: r.id, status: r.status, by: req.user.id });
+    res.json({ ok: true, ...r, page: page.name });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+app.post('/api/jobs/:id/post/instagram', authenticate, approved, async (req, res) => {
+  try {
+    const c = await postCtx(req, res); if (!c) return;
+    const { job, s, page, b } = c;
+    if (b.confirm !== 'publish') return res.status(400).json({ error: 'Please confirm before posting.' });
+    if (!page.ig) return res.status(409).json({ error: 'That Page has no Instagram business account linked.' });
+    const story = !!b.asStory && s.aspect === '9:16';
+    const dest = 'instagram-' + (story ? 'story' : 'post');
+    if (already(job, s.id, dest) && !b.again) return res.status(409).json({ error: 'This ad was already posted to Instagram.', code: 'already' });
+    const imageUrl = await fullImageUrl(s);
+    let r;
+    if (b.creationId) r = await meta.publishInstagram({ igId: page.ig.id, pageToken: page.token, creationId: String(b.creationId) });
+    else r = await meta.postInstagram({ igId: page.ig.id, pageToken: page.token, imageUrl, caption: captionFor(s), story });
+    if (r.status === 'published') await recordPost(job, s.id, { dest, page: '@' + page.ig.username, id: r.id, status: 'published', by: req.user.id });
+    res.json({ ok: true, ...r, account: page.ig.username });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+app.post('/api/jobs/:id/post/ads/setup', authenticate, approved, async (req, res) => {
+  try {
+    const c = await postCtx(req, res, { needPage: false, needAd: false }); if (!c) return;
+    const { job, conn, b } = c;
+    if (b.confirm !== 'create') return res.status(400).json({ error: 'Please confirm before creating the campaign.' });
+    const acct = conn.data.adAccounts.find((a) => a.id === String(b.adAccountId || ''));
+    if (!acct) return res.status(400).json({ error: 'Choose one of your ad accounts.' });
+    const budget = Number(b.dailyBudget);
+    if (!(budget >= 1 && budget <= 500)) return res.status(400).json({ error: 'Daily budget must be between 1 and 500.' });
+    const countries = (Array.isArray(b.countries) ? b.countries : ['CA']).map((x) => String(x).toUpperCase()).filter((x) => /^[A-Z]{2}$/.test(x)).slice(0, 10);
+    const name = String(b.name || ('ACE - ' + (job.result.brief && job.result.brief.business_name || slugOf(job)) + ' - ' + new Date().toISOString().slice(0, 10))).slice(0, 90);
+    const r = await meta.createCampaign({ adAccountId: acct.id, token: conn.data.userToken, name, dailyBudgetCents: budget * 100, countries: countries.length ? countries : ['CA'], ageMin: Math.max(13, parseInt(b.ageMin, 10) || 18), ageMax: Math.min(65, parseInt(b.ageMax, 10) || 65) });
+    res.json({ ok: true, ...r, name, status: 'PAUSED' });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+app.post('/api/jobs/:id/post/ads/ad', authenticate, approved, async (req, res) => {
+  try {
+    const c = await postCtx(req, res); if (!c) return;
+    const { job, conn, s, page, b } = c;
+    if (b.confirm !== 'create') return res.status(400).json({ error: 'Please confirm before creating the ad.' });
+    const acct = conn.data.adAccounts.find((a) => a.id === String(b.adAccountId || ''));
+    if (!acct || !/^[0-9]+$/.test(String(b.adSetId || ''))) return res.status(400).json({ error: 'Missing ad account or ad set.' });
+    if (already(job, s.id, 'meta-ad-paused') && !b.again) return res.status(409).json({ error: 'This ad already exists in a paused campaign.', code: 'already' });
+    const link = landing(job, b, { content: 'ad-' + s.id });
+    const r = await meta.createAd({ adAccountId: acct.id, token: conn.data.userToken, pageId: page.id, adSetId: String(b.adSetId), name: ('Ad ' + s.id + ' - ' + String(s.headline || '')).slice(0, 90), link, imageUrl: await fullImageUrl(s), message: captionFor(s, { max: 2000 }), headline: String(s.headline || '').slice(0, 40), description: String(s.description || '').slice(0, 30), cta: s.cta });
+    await recordPost(job, s.id, { dest: 'meta-ad-paused', page: acct.name, id: r.adId, status: 'paused', by: req.user.id });
+    res.json({ ok: true, ...r, status: 'PAUSED' });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
 
 // Voices to choose from for the voiceover (the account's own when the key allows listing, else stock voices).
 app.get('/api/voices', authenticate, approved, async (_req, res) => {

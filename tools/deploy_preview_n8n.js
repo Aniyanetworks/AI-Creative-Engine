@@ -37,7 +37,8 @@ const nodes = [
   { id: id(), name: 'Link', type: 'n8n-nodes-base.code', typeVersion: 2, position: [720, -80],
     parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `const f = $input.first().json;
 if (!f.thumbnailLink) return [{ json: { ok: true, ready: false, name: f.name } }];
-return [{ json: { ok: true, ready: true, name: f.name, url: String(f.thumbnailLink).split('=s')[0] + '=s1000' } }];` } },
+const full = (($('Receive').first().json.body || {}).size) === 'full'; // 'full' = original size (used when posting to Meta)
+return [{ json: { ok: true, ready: true, name: f.name, url: String(f.thumbnailLink).split('=s')[0] + (full ? '=s0' : '=s1000') } }];` } },
   { id: id(), name: 'Refuse', type: 'n8n-nodes-base.code', typeVersion: 2, position: [720, 100],
     parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: "throw new Error('Not an ad image.');" } },
 ];

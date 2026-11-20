@@ -31,7 +31,7 @@ export function createSupabaseStore(baseUrl, key) {
     if (!r.ok) {
       let msg = text.slice(0, 200);
       try { const j = JSON.parse(text); msg = j.message || j.hint || msg; } catch { /* keep raw */ }
-      if (r.status === 404 || /ace_(runs|profiles|usage)|user_id/.test(msg)) msg += ' (did you run supabase/schema.sql?)';
+      if (r.status === 404 || /ace_(runs|profiles|usage|connections)|user_id/.test(msg)) msg += ' (did you run supabase/schema.sql?)';
       throw Object.assign(new Error('Supabase ' + r.status + ': ' + msg), { status: 502 });
     }
     return text ? JSON.parse(text) : null;
@@ -57,6 +57,13 @@ export function createSupabaseStore(baseUrl, key) {
     async setApproved(id, approved) { await call('ace_profiles', '?id=eq.' + q(id), { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ approved: !!approved }) }); },
   };
 
+  // Connected accounts (see app/server/meta.js): tokens are stored encrypted. Needs the ace_connections table.
+  const connections = {
+    async get(userId, provider) { const rows = await call('ace_connections', '?user_id=eq.' + q(userId) + '&provider=eq.' + q(provider) + '&select=*'); return rows[0] ? { userId, provider, displayName: rows[0].display_name, dataEnc: rows[0].data_enc, expiresAt: rows[0].expires_at } : null; },
+    async put(c) { await call('ace_connections', '?on_conflict=user_id,provider', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: c.userId, provider: c.provider, display_name: c.displayName || null, data_enc: c.dataEnc, expires_at: c.expiresAt || null, updated_at: new Date().toISOString() }) }); },
+    async remove(userId, provider) { await call('ace_connections', '?user_id=eq.' + q(userId) + '&provider=eq.' + q(provider), { method: 'DELETE', headers: { Prefer: 'return=minimal' } }); },
+  };
+
   // Usage events (see app/server/usage.js). Needs the ace_usage table from supabase/schema.sql.
   const usage = {
     async add(ev) {
@@ -74,6 +81,7 @@ export function createSupabaseStore(baseUrl, key) {
     kind: 'supabase',
     profiles,
     usage,
+    connections,
     async list(filter = {}) {
       const who = filter.userId ? '&user_id=eq.' + q(filter.userId) : '';
       return (await call('ace_runs', '?select=' + LIST_COLS + who + '&order=created_at.desc&limit=200')).map(fromRow);
@@ -114,6 +122,7 @@ export function createLocalStore(dataDir) {
   return {
     kind: 'local',
     usage,
+    connections: (() => { const m = new Map(); return { async get(u, pv) { return m.get(u + '|' + pv) || null; }, async put(c) { m.set(c.userId + '|' + c.provider, c); }, async remove(u, pv) { m.delete(u + '|' + pv); } }; })(),
     profiles: null, // accounts need Supabase
     async list() { return jobs.map(slim); },
     async get(id) { return jobs.find((j) => j.id === id) || null; },

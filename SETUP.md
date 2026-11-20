@@ -206,3 +206,22 @@ The same numbers are shown for a single run: an **Est. $x.xx** chip in the run h
 **Hashtags on older runs:** runs made before tags existed show **Add hashtags** on each post and an **Add hashtags (N)** button at the top of the Static ads and Videos tabs. One click has Claude write 6 to 8 tags for every post that has none (about a cent; up to 20 posts at a time). Posts that already have tags are left alone.
 
 The run page also has a **Usage** tab (after Report) listing every charge for that run in time order: what it was, how much (tokens, images, videos and credits), the model and the estimated cost, with the same four totals as the sidebar report.
+
+## Posting to Meta from the app (each person connects their own Facebook account)
+Select ads on the **Static ads** tab (tick the box on a card, or **Select N with images**), then **Post…** in the bar at the bottom. Choose:
+- **Meta ads (paused):** one new campaign, one ad set and one ad per selected ad, ALL created paused (objective Traffic, daily budget, countries and ages you set). Nothing runs or spends until you switch it on in Meta Ads Manager.
+- **Facebook Page post:** the picture, caption, hashtags and a tracked link. Default is an unpublished **draft**; you can **schedule** it (10 minutes to 75 days ahead) or **publish now**.
+- **Instagram post:** publishes to the Page's linked Instagram business account (tall 9:16 ads can go as Stories). Instagram has no draft, so it always needs the "I understand this goes public" tick.
+Every post needs a confirmation, shows exactly what will happen first, and is remembered on the ad (green chips such as "Facebook draft"). Posting the same ad the same way twice needs "post again". "Book Now" has no general Meta button, so it is sent as "Learn More". Meta fetches the full-size picture through a short-lived Drive link (the preview workflow, `size: full`).
+
+**One-time setup**
+1. Run the last section of `supabase/schema.sql` (`ace_connections`) in the Supabase SQL Editor.
+2. https://developers.facebook.com > My Apps > Create app (type Business). Add the products **Facebook Login** and **Marketing API**. Under Settings > Basic copy the App ID and App Secret into `.env` as `META_APP_ID` and `META_APP_SECRET` (and on Netlify, secret).
+3. Facebook Login > Settings > **Valid OAuth Redirect URIs**: add `https://<your Netlify site>/api/meta/callback` (and, to test locally, `http://localhost:5173/api/meta/callback` plus `META_REDIRECT_URI` set to that same address in `.env`).
+4. `TOKEN_ENC_KEY` encrypts the stored tokens: 32 random bytes, base64 (`node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`). Use the same value locally and on Netlify. Losing or changing it means everyone has to reconnect.
+5. Restart / redeploy. **Account > Connected accounts > Connect Facebook**, sign in, choose the Pages and ad accounts to share.
+6. Instagram posting needs an Instagram **business or creator** account linked to the Page.
+
+**Who can use it:** while the Meta app is in development mode, only people with a role on it (App roles: admin, developer, tester) can connect. To let anyone connect, the app needs Meta App Review (advanced access to `pages_manage_posts`, `instagram_content_publish`, `ads_management`, `ads_read`, `business_management`, `pages_show_list`, `pages_read_engagement`, `instagram_basic`) and usually business verification.
+
+**Not verified against the real Meta yet:** the whole flow is tested offline against a stand-in for the Graph API (`node tools/test_meta.mjs`, 42 checks), not against Meta itself. Try it first with **Facebook Page post > draft** or **Meta ads (paused)** on a test Page or ad account. Tokens last about 60 days; reconnect if posting stops working.

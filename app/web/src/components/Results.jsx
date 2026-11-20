@@ -3,8 +3,9 @@ import { api } from '../api.js';
 import { MoreBar, RewriteBox, TagButton } from './WriteTools.jsx';
 import ImageSettings, { QUALITIES } from './ImageSettings.jsx';
 import RunUsageTab from './RunUsageTab.jsx';
+import PostDialog from './PostDialog.jsx';
 import { useModels, loadChoice, saveChoice } from '../models.js';
-import { Wallet, Facebook, Instagram, Youtube, Music2, Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
+import { Send, Wallet, Facebook, Instagram, Youtube, Music2, Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
 
 const TABS = ['Hooks', 'Static ads', 'Videos', 'Brief', 'Competitors', 'Report', 'Usage'];
 const TAB_ICON = { Hooks: Lightbulb, 'Static ads': ImageIcon, Videos: Video, Brief: FileText, Competitors: Swords, Report: ClipboardList, Usage: Wallet };
@@ -56,7 +57,7 @@ const isRendering = (s) => /^rendering:/.test((s && s.image_status) || '');
 const isFailed = (s) => /^failed/.test((s && s.image_status) || '');
 
 // One ad, laid out like the real thing: page header, caption, picture, headline and button.
-function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake, imgSettings }) {
+function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake, imgSettings, selected, onSelect }) {
   const [more, setMore] = useState(false);
   const [refine, setRefine] = useState(false);
   const [note, setNote] = useState('');
@@ -89,12 +90,14 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake, i
   const text = [s.headline, '', s.primary_text, '', 'CTA: ' + s.cta, ...((s.hashtags || []).length ? ['', s.hashtags.join(' ')] : [])].join('\n');
   const state = busy ? 'making' : s.image_url ? 'done' : isFailed(s) ? 'failed' : 'concept';
   return (
-    <article className="ad">
+    <article className={'ad' + (selected ? ' picked' : '')}>
       <div className="ad-top">
         <span className="ad-av" style={{ background: brand.base, color: brand.fg }}>{(brand.name || '?').trim().charAt(0).toUpperCase()}</span>
         <div className="ad-who"><b>{brand.name}</b><span>Sponsored · #{s.id} · {s.aspect} · {s.style}</span></div>
+        {onSelect && <label className="pick" title="Select this ad to post it"><input type="checkbox" checked={!!selected} onChange={() => onSelect(s.id)} aria-label={'Select ad ' + s.id} /></label>}
       </div>
       <PlatformBadges aspect={s.aspect} />
+      <PostedChips posts={(pack.posts || {})[s.id]} />
       <div className="ad-cap">
         <p className={'pre' + (more ? '' : ' clamp3')}>{s.primary_text}</p>
         {String(s.primary_text || '').length > 130 && <button type="button" className="linkbtn" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}
@@ -149,8 +152,11 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake, i
   );
 }
 
-function Statics({ pack, jobId, onChanged }) {
+function Statics({ pack, jobId, onChanged, goAccount, defaultLink }) {
   const [fmt, setFmt] = useState('all');
+  const [sel, setSel] = useState(() => new Set());
+  const [posting, setPosting] = useState(false);
+  const toggleSel = (id) => setSel((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const [view, setView] = useState('all'); // all | done | concept | failed
   const [startErr, setStartErr] = useState('');
   const [starting, setStarting] = useState(() => new Set());
@@ -200,6 +206,8 @@ function Statics({ pack, jobId, onChanged }) {
   const count = (a) => all.filter((s) => s.aspect === a).length;
   const doneN = all.filter((s) => s.image_url).length;
   const canMake = !!(jobId && onChanged);
+  const withImg = all.filter((x) => x.image_url);
+  const chosen = all.filter((x) => sel.has(x.id));
   return (
     <>
       <div className="stoolbar">
@@ -233,6 +241,7 @@ function Statics({ pack, jobId, onChanged }) {
                   {bulk ? <><Loader2 size={13} className="rot" /> Starting…</> : <><ImageIcon size={13} /> Generate {missing.length} missing</>}
                 </button>
               ))}
+              {withImg.length > 0 && <button type="button" className="ghost" onClick={() => setSel(sel.size ? new Set() : new Set(withImg.map((x) => x.id)))}>{sel.size ? 'Clear selection' : 'Select ' + withImg.length + ' with images'}</button>}
               <TagButton kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} compact />
               <MoreBar kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} />
             </div>
@@ -243,20 +252,45 @@ function Statics({ pack, jobId, onChanged }) {
       {list.length === 0 && <p className="muted" style={{ padding: '24px 0' }}>No ads match these filters.</p>}
       <div className="cards ads">
         {list.map((s) => (
-          <StaticCard key={s.id} s={s} brand={brand} imgSettings={{ quality, onQuality: pickQuality, model: imgModel, onModel: pickModel, models }} pack={pack} onChanged={onChanged} jobId={jobId} canMake={canMake} onMake={makeImage} busy={isRendering(s) || starting.has(s.id)} />
+          <StaticCard key={s.id} s={s} selected={sel.has(s.id)} onSelect={canMake ? toggleSel : null} brand={brand} imgSettings={{ quality, onQuality: pickQuality, model: imgModel, onModel: pickModel, models }} pack={pack} onChanged={onChanged} jobId={jobId} canMake={canMake} onMake={makeImage} busy={isRendering(s) || starting.has(s.id)} />
         ))}
       </div>
+      {sel.size > 0 && (
+        <div className="selbar" role="region" aria-label="Selected ads">
+          <b>{sel.size} selected</b>
+          <span className="muted small">{chosen.filter((x) => !x.image_url).length ? chosen.filter((x) => !x.image_url).length + ' without an image' : 'all have images'}</span>
+          <span style={{ flex: 1 }} />
+          <button className="ghost" onClick={() => setSel(new Set())}>Clear</button>
+          <button className="btn" onClick={() => setPosting(true)}><Send size={14} /> Post…</button>
+        </div>
+      )}
+      {posting && <PostDialog jobId={jobId} pack={pack} ads={chosen} defaultLink={defaultLink} goAccount={goAccount} onClose={() => setPosting(false)} onDone={onChanged} />}
     </>
   );
 }
 
 // Post tags: chips plus one button that copies them all.
 function Tags({ list }) {
+  const [all, setAll] = useState(false);
   if (!list || !list.length) return null;
+  const shown = all ? list : list.slice(0, 4);
   return (
     <div className="tags">
-      {list.map((t) => <span key={t} className="tagchip">{t}</span>)}
+      {shown.map((t) => <span key={t} className="tagchip">{t}</span>)}
+      {list.length > 4 && <button type="button" className="linkbtn" onClick={() => setAll(!all)}>{all ? 'Show fewer' : '+' + (list.length - 4) + ' more'}</button>}
       <CopyBtn text={list.join(' ')} label="Copy tags" />
+    </div>
+  );
+}
+
+// What has already been sent from this app, as small chips on the ad.
+const POST_LABEL = { 'facebook-draft': 'Facebook draft', 'facebook-scheduled': 'Facebook scheduled', 'facebook-published': 'On Facebook', 'instagram-post': 'On Instagram', 'instagram-story': 'Instagram story', 'meta-ad-paused': 'Paused ad in Meta' };
+function PostedChips({ posts }) {
+  const list = [...new Map((posts || []).map((x) => [x.dest, x])).values()];
+  if (!list.length) return null;
+  return (
+    <div className="platforms" style={{ paddingTop: 0 }} aria-label="Already posted">
+      {list.map((x) => <span key={x.dest} className="postedchip" title={(x.page || '') + ' · ' + new Date(x.at).toLocaleString()}><CheckCircle2 size={12} aria-hidden /> {POST_LABEL[x.dest] || x.dest}</span>)}
     </div>
   );
 }
@@ -596,7 +630,7 @@ function Report({ pack }) {
   );
 }
 
-export default function Results({ pack, jobId, onChanged }) {
+export default function Results({ pack, jobId, onChanged, goAccount, defaultLink }) {
   const [tab, setTab] = useState('Hooks');
   const st = pack.stats || {};
   const Body = { Hooks, 'Static ads': Statics, Videos, Brief, Competitors, Report, Usage: RunUsageTab }[tab];
@@ -625,7 +659,7 @@ export default function Results({ pack, jobId, onChanged }) {
             </button>
           ))}
         </div>
-        <Body pack={pack} jobId={jobId} onChanged={onChanged} />
+        <Body pack={pack} jobId={jobId} onChanged={onChanged} goAccount={goAccount} defaultLink={defaultLink} />
       </section>
     </>
   );

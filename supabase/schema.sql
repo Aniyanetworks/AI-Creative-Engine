@@ -63,3 +63,20 @@ create index if not exists ace_usage_run_idx  on public.ace_usage (run_id);
 alter table public.ace_usage enable row level security;  -- no policies: only the backend's secret key can touch it
 
 notify pgrst, 'reload schema';
+
+-- ---------------------------------------------------------------------------
+-- Connected accounts (Meta): one row per person and provider; the tokens are stored encrypted (safe to run more than once)
+-- ---------------------------------------------------------------------------
+create table if not exists public.ace_connections (
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  provider     text not null,                 -- 'meta'
+  display_name text,
+  data_enc     text not null,                 -- AES-GCM encrypted JSON (tokens, pages, ad accounts)
+  expires_at   timestamptz,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  primary key (user_id, provider)
+);
+alter table public.ace_connections enable row level security;  -- no policies: only the backend's secret key can touch it
+
+notify pgrst, 'reload schema';

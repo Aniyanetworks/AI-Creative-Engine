@@ -34,7 +34,7 @@ function Dot({ state, Icon }) {
   return <span className="sdot"><Icon size={12} /></span>;
 }
 
-export default function RunView({ id, onFinished, onRerun }) {
+export default function RunView({ id, onFinished, onRerun, onGoAccount }) {
   const [job, setJob] = useState(null);
   const [err, setErr] = useState('');
   const [elapsed, setElapsed] = useState(0);
@@ -128,7 +128,7 @@ export default function RunView({ id, onFinished, onRerun }) {
         {running && <p className="note" style={{ marginTop: 16 }}>A dry run takes about 3–4 minutes. You can leave this page; the run continues in n8n and stays in the list on the left.</p>}
       </section>
 
-      {job.status === 'success' && job.result && <Results pack={job.result} jobId={job.id} onChanged={reloadJob} />}
+      {job.status === 'success' && job.result && <Results pack={job.result} jobId={job.id} onChanged={reloadJob} goAccount={onGoAccount} defaultLink={job.url} />}
     </>
   );
 }

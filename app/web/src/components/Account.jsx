@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { KeyRound, Lock, Eye, EyeOff, Loader2, AlertTriangle, CheckCircle2, LogOut, UserRound } from 'lucide-react';
 import { auth } from '../api.js';
+import ConnectedAccounts from './ConnectedAccounts.jsx';
 
-export default function Account({ me, onSignOut }) {
+export default function Account({ me, onSignOut, notice }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
@@ -29,7 +30,9 @@ export default function Account({ me, onSignOut }) {
       <h2 style={{ marginBottom: 4 }}>Account</h2>
       <p className="muted small" style={{ marginBottom: 18 }}>Manage how you sign in.</p>
 
-      <section className="card">
+      <ConnectedAccounts notice={notice} />
+
+      <section className="card" style={{ marginTop: 18 }}>
         <div className="row gap" style={{ flexWrap: 'nowrap' }}>
           <span className="tile"><UserRound size={18} /></span>
           <div style={{ minWidth: 0, flex: 1 }}><b style={{ display: 'block', wordBreak: 'break-all' }}>{me.email}</b>

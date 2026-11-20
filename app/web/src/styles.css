@@ -408,3 +408,28 @@ select:hover { border-color: var(--muted); } select:focus-visible { outline: 2px
 /* Image settings opened inside a card: part of the card, not a floating panel (cards clip overflow) */
 .popwrap.wide { flex: 1 0 100%; }
 .pop.inline { position: static; width: 100%; margin-top: 8px; box-shadow: none; background: var(--soft); }
+
+/* Selecting ads and posting them */
+.pick { margin-left: auto; display: inline-grid; place-items: center; width: 30px; height: 30px; cursor: pointer; }
+.pick input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+.ad.picked { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.selbar { position: sticky; bottom: 12px; z-index: 15; display: flex; gap: 10px; align-items: center; margin: 16px auto 0; max-width: 720px; background: var(--surface); border: 1px solid var(--accent); border-radius: 999px; padding: 8px 12px 8px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+.postedchip { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 650; background: var(--ok-soft); color: var(--ok); white-space: nowrap; }
+.modal { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.45); display: grid; place-items: center; padding: 16px; overflow-y: auto; }
+.modal-card { width: min(680px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--surface); border-radius: var(--r); padding: 20px 22px; box-shadow: 0 24px 60px rgba(0,0,0,.35); display: grid; gap: 14px; }
+.dests { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.dest { text-align: left; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); padding: 12px; cursor: pointer; display: grid; gap: 6px; font: inherit; color: var(--text); }
+.dest span { font-size: 12px; color: var(--muted); line-height: 1.35; } .dest i { font-style: normal; font-size: 11px; font-weight: 700; display: inline-flex; gap: 4px; align-items: center; }
+.dest i.safe { color: var(--ok); } .dest i.live { color: var(--bad); }
+.dest.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.fgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.fgrid label, .modal-card label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; } .fgrid label small { font-weight: 400; font-size: 12px; }
+.fgrid input, .fgrid select { width: 100%; color: var(--text); font-weight: 400; }
+.modal-card label.check, .fgrid label.check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; color: var(--text); font-size: 13px; }
+.summarybox { display: flex; gap: 10px; align-items: flex-start; border-radius: var(--r-sm); padding: 10px 12px; font-size: 14px; }
+.summarybox.safe { background: var(--ok-soft); color: var(--ok); } .summarybox.live { background: var(--bad-soft); color: var(--bad); }
+.btn.danger { background: var(--bad); color: #fff; }
+.postrows { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.postrows li { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 10px; }
+.postrows li.ok { border-color: var(--ok); } .postrows li.fail { border-color: var(--bad); }
+.postrows .pr-n { flex: 1; min-width: 0; display: grid; } .postrows .pr-n small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }

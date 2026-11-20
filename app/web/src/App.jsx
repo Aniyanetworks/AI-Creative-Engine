@@ -30,6 +30,8 @@ function useTheme() {
 function Main({ me, onSignOut }) {
   const [status, setStatus] = useState(null);
   const [statusErr, setStatusErr] = useState('');
+  // Facebook sends people back with ?meta=connected or ?meta=error&msg=...: show the Account page with the result.
+  const [metaNotice, setMetaNotice] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [activeId, setActiveId] = useState(null); // null = new run
   const [busy, setBusy] = useState(false);
@@ -42,6 +44,14 @@ function Main({ me, onSignOut }) {
   }, []);
   const refreshJobs = useCallback(async () => { try { setJobs(await api.listJobs()); } catch { /* shown via status */ } finally { setJobsLoading(false); } }, []);
   useEffect(() => { refreshStatus(); refreshJobs(); }, [refreshStatus, refreshJobs]);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const m = q.get('meta');
+    if (!m) return;
+    setMetaNotice(m === 'connected' ? { ok: true, text: 'Facebook connected. You can now post ads from the Static ads tab.' } : { ok: false, text: 'Facebook was not connected: ' + (q.get('msg') || 'cancelled') });
+    setActiveId(ACCOUNT);
+    window.history.replaceState(null, '', window.location.pathname);
+  }, []);
 
   const toggleWorkflow = async () => {
     setBusy(true);
@@ -121,9 +131,9 @@ function Main({ me, onSignOut }) {
 
         {activeId === USERS ? <Users myEmail={me.email} />
           : activeId === USAGE ? <Usage me={me} />
-          : activeId === ACCOUNT ? <Account me={me} onSignOut={onSignOut} />
+          : activeId === ACCOUNT ? <Account me={me} onSignOut={onSignOut} notice={metaNotice} />
           : activeId === null ? <RunForm disabled={!ready} onStarted={async (id) => { await refreshJobs(); setActiveId(id); }} />
-          : <RunView key={activeId} id={activeId} onFinished={refreshJobs} onRerun={afterRerun} />}
+          : <RunView key={activeId} id={activeId} onFinished={refreshJobs} onRerun={afterRerun} onGoAccount={() => setActiveId(ACCOUNT)} />}
       </main>
     </div>
   );
