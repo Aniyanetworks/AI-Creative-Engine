@@ -65,8 +65,9 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake })
   // Drive files are private: ask the app (through n8n) for a picture link the browser can show. A just-made image can need a few
   // seconds before Drive has a thumbnail, so ask again a few times.
   const [src, setSrc] = useState(null);
+  const [noHook, setNoHook] = useState(false);
   useEffect(() => {
-    setSrc(null); setThumbBad(false);
+    setSrc(null); setThumbBad(false); setNoHook(false);
     if (!id || !jobId) return undefined;
     let stop = false; let tries = 0; let timer;
     const ask = async () => {
@@ -74,6 +75,7 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake })
         const r = await api.getPreview(jobId, s.id);
         if (stop) return;
         if (r.ready && r.url) { setSrc(r.url); return; }
+        if (r.reason === 'not-configured') { setNoHook(true); setSrc('https://drive.google.com/thumbnail?id=' + id + '&sz=w800'); return; }
       } catch { /* try the fallback below */ }
       tries += 1;
       if (tries < 6 && !stop) timer = setTimeout(ask, 3500);
@@ -117,6 +119,7 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake })
         <div><b>{s.headline}</b>{s.description ? <span>{s.description}</span> : null}</div>
         <span className="cta-tag">{s.cta}</span>
       </div>
+      {noHook && thumbBad && <p className="note" style={{ padding: '6px 14px 0', margin: 0 }}>Preview is not set up on this server (N8N_PREVIEW_WEBHOOK_URL). The image is in Drive: use Open in Drive.</p>}
       {isFailed(s) && !busy && <p className="note bad" style={{ padding: '0 14px' }}>{s.image_status}</p>}
       <Tags list={s.hashtags} />
       {!(s.hashtags || []).length && jobId && onChanged && <div style={{ padding: '0 14px 4px' }}><TagButton kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} ids={[s.id]} label="Add hashtags" compact /></div>}
