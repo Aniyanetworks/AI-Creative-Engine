@@ -36,20 +36,55 @@ const luminance = (hex) => {
 };
 const List = ({ items }) => (items && items.length ? <ul className="plain">{items.map((x, i) => <li key={i}>{typeof x === 'string' ? x : JSON.stringify(x)}</li>)}</ul> : <p className="muted small">None</p>);
 
+// "Authority (white space: engineer-led credibility)" -> the angle ("Authority") and its detail
+const angleOf = (h) => {
+  const t = String(h.angle || 'Other').trim();
+  const m = /^([^(:]+?)\s*[(:]\s*(.*?)\)?$/.exec(t);
+  const main = (m ? m[1] : t).trim();
+  return { main: main.charAt(0).toUpperCase() + main.slice(1), detail: m ? m[2].replace(/\)$/, '').trim() : '' };
+};
+
 function Hooks({ pack, jobId, onChanged }) {
-  const all = (pack.hooks || []).map((h) => h.id + '. ' + h.hook).join('\n');
+  const hooks = pack.hooks || [];
+  const [angle, setAngle] = useState('all');
+  const counts = {};
+  for (const h of hooks) { const k = angleOf(h).main; counts[k] = (counts[k] || 0) + 1; }
+  const angles = Object.keys(counts);
+  const shown = hooks.filter((h) => angle === 'all' || angleOf(h).main === angle);
+  const all = shown.map((h) => h.id + '. ' + h.hook).join('\n');
   return (
     <>
-      <div className="toolbar"><span className="muted small">{(pack.hooks || []).length} hooks across different angles</span><CopyBtn text={all} label="Copy all hooks" /></div>
-      <MoreBar kind="hooks" pack={pack} jobId={jobId} onChanged={onChanged} />
+      <div className="hookbar">
+        <div className="hookinfo">
+          <b>{hooks.length} hooks</b><span className="muted small">across {angles.length} angle{angles.length === 1 ? '' : 's'}</span>
+        </div>
+        <div className="hookacts">
+          <MoreBar kind="hooks" pack={pack} jobId={jobId} onChanged={onChanged} />
+          <CopyBtn text={all} label={angle === 'all' ? 'Copy all hooks' : 'Copy these ' + shown.length} />
+        </div>
+        {angles.length > 1 && (
+          <div className="angles-filter" role="group" aria-label="Filter by angle">
+            <button type="button" className={'achip' + (angle === 'all' ? ' on' : '')} onClick={() => setAngle('all')}>All <i>{hooks.length}</i></button>
+            {angles.map((k) => <button key={k} type="button" className={'achip' + (angle === k ? ' on' : '')} onClick={() => setAngle(k)}>{k} <i>{counts[k]}</i></button>)}
+          </div>
+        )}
+      </div>
       <div className="hooklist">
-        {(pack.hooks || []).map((h) => (
-          <article key={h.id} className="hook">
-            <span className="num">{h.id}</span>
-            <div><span className="tag">{h.angle}</span>{h.rewritten && <span className="tag" style={{ marginLeft: 6 }}>rewritten</span>}<q>{h.hook}</q><p className="why">{h.why_it_works}</p></div>
-            <div className="acts"><CopyBtn text={h.hook} /><RewriteBox kind="hooks" item={h} pack={pack} jobId={jobId} onChanged={onChanged} compact /></div>
-          </article>
-        ))}
+        {shown.map((h) => {
+          const an = angleOf(h);
+          return (
+            <article key={h.id} className="hook">
+              <span className="num">{h.id}</span>
+              <div className="hookbody">
+                <div className="hookmeta"><span className="tag">{an.main}</span>{an.detail && <span className="muted small">{an.detail}</span>}{h.rewritten && <span className="tag alt">rewritten</span>}</div>
+                <q>{h.hook}</q>
+                {h.why_it_works && <p className="why"><b>Why it works</b> {h.why_it_works}</p>}
+                {h.offer_framing && <p className="why"><b>Then</b> {h.offer_framing}</p>}
+              </div>
+              <div className="acts"><CopyBtn text={h.hook} /><RewriteBox kind="hooks" item={h} pack={pack} jobId={jobId} onChanged={onChanged} compact /></div>
+            </article>
+          );
+        })}
       </div>
     </>
   );
