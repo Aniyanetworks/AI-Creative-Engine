@@ -39,6 +39,8 @@ async function call(path, opts = {}) {
     if (await refreshSession()) ({ r, data } = await send(path, opts));
     else throw Object.assign(new Error('Your session expired. Please sign in again.'), { code: 'unauthenticated' });
   }
+  // A 404 with no message from the app means this page is newer than the server it talks to (the server was not restarted or redeployed).
+  if (r.status === 404 && !data.error) throw Object.assign(new Error('The server does not know this action yet. Restart the app server (npm run dev) or redeploy, then try again.'), { status: 404 });
   if (!r.ok) throw Object.assign(new Error(data.error || 'Request failed (' + r.status + ')'), { code: data.code, status: r.status });
   return data;
 }
