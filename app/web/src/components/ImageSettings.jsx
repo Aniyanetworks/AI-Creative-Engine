@@ -9,7 +9,7 @@ export const QUALITIES = [
 ];
 
 // One button that summarises the image settings ("High · GPT Image 2") and opens a small panel to change them.
-export default function ImageSettings({ quality, onQuality, model, onModel, models }) {
+export default function ImageSettings({ quality, onQuality, model, onModel, models, inline }) {
   const [open, setOpen] = useState(false);
   const box = useRef(null);
   useEffect(() => {
@@ -23,12 +23,12 @@ export default function ImageSettings({ quality, onQuality, model, onModel, mode
   const list = (models && models.image) || [];
   const current = model || (models && models.defaults.image) || '';
   return (
-    <div className="popwrap" ref={box}>
-      <button type="button" className="ghost" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="dialog">
-        <SlidersHorizontal size={13} /> {q.name}{current ? ' · ' + shortLabel(list, current) : ''} <ChevronDown size={13} />
+    <div className={'popwrap' + (inline && open ? ' wide' : '')} ref={box}>
+      <button type="button" className="ghost" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="dialog" title={q.name + ' quality · ' + shortLabel(list, current)}>
+        <SlidersHorizontal size={13} /> {inline ? 'Model & quality' : q.name + (current ? ' · ' + shortLabel(list, current) : '')} <ChevronDown size={13} />
       </button>
       {open && (
-        <div className="pop" role="dialog" aria-label="Image settings">
+        <div className={'pop' + (inline ? ' inline' : '')} role="dialog" aria-label="Image settings">
           <b className="small">Image quality</b>
           <div className="qcards" role="radiogroup" aria-label="Image quality">
             {QUALITIES.map((x) => (

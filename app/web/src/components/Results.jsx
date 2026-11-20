@@ -56,7 +56,7 @@ const isRendering = (s) => /^rendering:/.test((s && s.image_status) || '');
 const isFailed = (s) => /^failed/.test((s && s.image_status) || '');
 
 // One ad, laid out like the real thing: page header, caption, picture, headline and button.
-function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake }) {
+function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake, imgSettings }) {
   const [more, setMore] = useState(false);
   const [refine, setRefine] = useState(false);
   const [note, setNote] = useState('');
@@ -124,6 +124,7 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake })
       <Tags list={s.hashtags} />
       {!(s.hashtags || []).length && jobId && onChanged && <div style={{ padding: '0 14px 4px' }}><TagButton kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} ids={[s.id]} label="Add hashtags" compact /></div>}
       <div className="ad-actions">
+        {canMake && imgSettings && <ImageSettings inline {...imgSettings} />}
         {canMake && (
           <button type="button" className={s.image_url ? 'ghost' : 'btn sm'} disabled={busy} onClick={() => (s.image_url ? setRefine(true) : onMake(s))} title="Makes this one image with OpenAI (about 4 cents at medium quality) and saves it to Drive">
             {busy ? <><Loader2 size={13} className="rot" /> Making…</> : <><ImageIcon size={13} /> {s.image_url ? 'Make again' : 'Generate image'}</>}
@@ -242,7 +243,7 @@ function Statics({ pack, jobId, onChanged }) {
       {list.length === 0 && <p className="muted" style={{ padding: '24px 0' }}>No ads match these filters.</p>}
       <div className="cards ads">
         {list.map((s) => (
-          <StaticCard key={s.id} s={s} brand={brand} pack={pack} onChanged={onChanged} jobId={jobId} canMake={canMake} onMake={makeImage} busy={isRendering(s) || starting.has(s.id)} />
+          <StaticCard key={s.id} s={s} brand={brand} imgSettings={{ quality, onQuality: pickQuality, model: imgModel, onModel: pickModel, models }} pack={pack} onChanged={onChanged} jobId={jobId} canMake={canMake} onMake={makeImage} busy={isRendering(s) || starting.has(s.id)} />
         ))}
       </div>
     </>

@@ -404,3 +404,7 @@ select:hover { border-color: var(--muted); } select:focus-visible { outline: 2px
 .mp-bar { flex: 0 0 120px; width: 120px; }
 .mp-actions { flex: 1 1 460px; justify-content: flex-end; }
 @media (max-width: 760px) { .mp-actions { justify-content: flex-start; flex-basis: 100%; } .mp-progress { flex-basis: 100%; } .mp-bar { flex: 1 1 auto; width: auto; } }
+
+/* Image settings opened inside a card: part of the card, not a floating panel (cards clip overflow) */
+.popwrap.wide { flex: 1 0 100%; }
+.pop.inline { position: static; width: 100%; margin-top: 8px; box-shadow: none; background: var(--soft); }
