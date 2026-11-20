@@ -397,3 +397,10 @@ select:hover { border-color: var(--muted); } select:focus-visible { outline: 2px
 .platforms { gap: 6px; }
 
 .typechip { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; white-space: nowrap; cursor: default; }
+
+/* Static ads panel: the progress text never wraps; the buttons move to their own line when there is no room */
+.makepanel { gap: 10px 20px; }
+.mp-progress { flex: 0 0 auto; min-width: 0; white-space: nowrap; }
+.mp-bar { flex: 0 0 120px; width: 120px; }
+.mp-actions { flex: 1 1 460px; justify-content: flex-end; }
+@media (max-width: 760px) { .mp-actions { justify-content: flex-start; flex-basis: 100%; } .mp-progress { flex-basis: 100%; } .mp-bar { flex: 1 1 auto; width: auto; } }
