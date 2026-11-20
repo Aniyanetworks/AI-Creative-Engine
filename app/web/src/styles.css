@@ -535,7 +535,7 @@ select:hover { border-color: var(--muted); } select:focus-visible { outline: 2px
 /* Brief */
 .bhero { border: 1px solid var(--line); border-radius: var(--r); padding: 18px 20px; background: var(--surface); }
 .bhead { display: flex; gap: 16px; align-items: flex-start; }
-.bhead > div { flex: 1; } .bhead h2 { margin: 0; font-size: 22px; } .bone { margin: 4px 0 8px; font-size: 16px; color: var(--copy); }
+.bhead > div { flex: 1; } .bhead h2 { margin: 0; font-size: 22px; } .bline { margin: 4px 0 8px; font-size: 16px; color: var(--copy); }
 .blogo { width: 56px; height: 56px; border-radius: 12px; object-fit: contain; background: var(--soft); border: 1px solid var(--line); flex: none; padding: 4px; box-sizing: border-box; }
 .blogo.ph { display: grid; place-items: center; font-weight: 800; font-size: 22px; color: var(--accent); }
 .bmeta { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); } .bmeta > * { display: inline-flex; gap: 5px; align-items: center; } .bmeta a { color: var(--accent); }

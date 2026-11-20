@@ -61,7 +61,7 @@ export default function BriefTab({ pack, jobId, onChanged }) {
           {b.logo_url && !logoBad ? <img className="blogo" src={b.logo_url} alt="" referrerPolicy="no-referrer" onError={() => setLogoBad(true)} /> : <span className="blogo ph" aria-hidden>{(b.business_name || '?').charAt(0)}</span>}
           <div style={{ minWidth: 0 }}>
             <h2>{b.business_name || pack.business}</h2>
-            <p className="bone">{b.one_liner}</p>
+            <p className="bline">{b.one_liner}</p>
             <div className="bmeta">
               {url && <a href={url} target="_blank" rel="noreferrer"><Globe size={13} /> {host(url)} <ExternalLink size={11} /></a>}
               {b.location && <span><MapPin size={13} /> {b.location}</span>}
