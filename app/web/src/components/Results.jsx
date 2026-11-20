@@ -46,71 +46,138 @@ function Hooks({ pack }) {
   );
 }
 
+const driveId = (u) => { const m = /\/d\/([A-Za-z0-9_-]+)/.exec(u || ''); return m ? m[1] : null; };
+const isRendering = (s) => /^rendering:/.test((s && s.image_status) || '');
+const isFailed = (s) => /^failed/.test((s && s.image_status) || '');
+
+// One ad, laid out like the real thing: page header, caption, picture, headline and button.
+function StaticCard({ s, brand, busy, onMake, canMake }) {
+  const [more, setMore] = useState(false);
+  const [thumbBad, setThumbBad] = useState(false);
+  const id = driveId(s.image_url);
+  const showImg = !!id && !thumbBad;
+  const tall = s.aspect === '9:16';
+  const text = [s.headline, '', s.primary_text, '', 'CTA: ' + s.cta, ...((s.hashtags || []).length ? ['', s.hashtags.join(' ')] : [])].join('\n');
+  const state = busy ? 'making' : s.image_url ? 'done' : isFailed(s) ? 'failed' : 'concept';
+  return (
+    <article className="ad">
+      <div className="ad-top">
+        <span className="ad-av" style={{ background: brand.base, color: brand.fg }}>{(brand.name || '?').trim().charAt(0).toUpperCase()}</span>
+        <div className="ad-who"><b>{brand.name}</b><span>Sponsored · #{s.id} · {s.aspect} · {s.style}</span></div>
+      </div>
+      <div className="ad-cap">
+        <p className={'pre' + (more ? '' : ' clamp3')}>{s.primary_text}</p>
+        {String(s.primary_text || '').length > 130 && <button type="button" className="linkbtn" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}
+      </div>
+      <div className={'ad-media ' + (tall ? 'tall' : 'sq')}>
+        {showImg ? (
+          <img src={'https://drive.google.com/thumbnail?id=' + id + '&sz=w800'} alt={s.overlay_text} loading="lazy" referrerPolicy="no-referrer" onError={() => setThumbBad(true)} />
+        ) : (
+          <div className="ad-concept" style={{ background: brand.accent ? 'linear-gradient(135deg,' + brand.base + ',' + brand.accent + ')' : brand.base, color: brand.fg }}>
+            <span>{s.overlay_text}</span>
+          </div>
+        )}
+        <span className={'ad-badge ' + state}>
+          {state === 'making' ? <><Loader2 size={12} className="rot" /> Making image…</> : state === 'done' ? 'Image ready' : state === 'failed' ? 'Failed' : 'Concept preview'}
+        </span>
+      </div>
+      <div className="ad-cta">
+        <div><b>{s.headline}</b>{s.description ? <span>{s.description}</span> : null}</div>
+        <span className="cta-tag">{s.cta}</span>
+      </div>
+      {isFailed(s) && !busy && <p className="note bad" style={{ padding: '0 14px' }}>{s.image_status}</p>}
+      <Tags list={s.hashtags} />
+      <div className="ad-actions">
+        {canMake && (
+          <button type="button" className={s.image_url ? 'ghost' : 'btn sm'} disabled={busy} onClick={() => onMake(s)} title="Makes this one image with OpenAI (about 4 cents at medium quality) and saves it to Drive">
+            {busy ? <><Loader2 size={13} className="rot" /> Making…</> : <><ImageIcon size={13} /> {s.image_url ? 'Make again' : 'Generate image'}</>}
+          </button>
+        )}
+        {s.image_url && <a className="ghost" href={s.image_url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Open in Drive</a>}
+        <CopyBtn text={text} label="Copy ad" />
+      </div>
+      <details className="ad-more"><summary>Image prompt</summary><p className="small pre muted">{s.image_prompt}</p></details>
+    </article>
+  );
+}
+
 function Statics({ pack, jobId, onChanged }) {
   const [fmt, setFmt] = useState('all');
+  const [view, setView] = useState('all'); // all | done | concept | failed
   const [startErr, setStartErr] = useState('');
-  const [starting, setStarting] = useState(null);
-  const rendering = (pack.statics || []).some((s) => /^rendering:/.test(s.image_status || ''));
+  const [starting, setStarting] = useState(() => new Set());
+  const [bulk, setBulk] = useState(false);
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const all = pack.statics || [];
+  const rendering = all.some(isRendering);
   // While images are being made, ask for the run again every few seconds so finished ones appear.
   useEffect(() => {
     if (!rendering || !onChanged) return undefined;
     const t = setInterval(onChanged, 5000);
     return () => clearInterval(t);
   }, [rendering, onChanged]);
-  const makeImage = async (s) => {
-    setStarting(s.id); setStartErr('');
-    try { await api.renderStatic(jobId, s.id); if (onChanged) await onChanged(); } catch (e) { setStartErr(e.message); }
-    finally { setStarting(null); }
+
+  const startOne = async (s) => {
+    setStarting((p) => new Set(p).add(s.id));
+    try { await api.renderStatic(jobId, s.id); } finally { setStarting((p) => { const n = new Set(p); n.delete(s.id); return n; }); }
   };
+  const makeImage = async (s) => {
+    setStartErr('');
+    try { await startOne(s); if (onChanged) await onChanged(); } catch (e) { setStartErr(e.message); }
+  };
+  const missing = all.filter((s) => !s.image_url && !isRendering(s) && String(s.image_prompt || '').trim());
+  const makeAllMissing = async () => {
+    setBulk(true); setConfirmBulk(false); setStartErr('');
+    let failed = 0; let lastErr = '';
+    for (const s of missing) {
+      try { await startOne(s); } catch (e) { failed += 1; lastErr = e.message; if (/not set up/.test(e.message)) break; }
+      await new Promise((r) => setTimeout(r, 1500)); // stagger the requests so OpenAI's rate limit is not hit
+    }
+    if (failed) setStartErr(failed + ' image' + (failed === 1 ? '' : 's') + ' could not be started: ' + lastErr);
+    if (onChanged) await onChanged();
+    setBulk(false);
+  };
+
   const colors = ((pack.brief && pack.brief.brand_colors) || []).filter(hexOk);
   const base = colors[0] || '#4338ca';
-  const accent = colors[1] || null;
-  const list = (pack.statics || []).filter((s) => fmt === 'all' || s.aspect === fmt);
-  const fg = luminance(base) > 0.5 ? '#14110f' : '#ffffff';
-  const count = (a) => (pack.statics || []).filter((s) => s.aspect === a).length;
+  const brand = { base, accent: colors[1] || null, fg: luminance(base) > 0.5 ? '#14110f' : '#ffffff', name: (pack.brief && pack.brief.business_name) || pack.business || 'Your brand' };
+  const kind = (s) => (s.image_url ? 'done' : isFailed(s) ? 'failed' : 'concept');
+  const list = all.filter((s) => (fmt === 'all' || s.aspect === fmt) && (view === 'all' || kind(s) === view));
+  const count = (a) => all.filter((s) => s.aspect === a).length;
+  const doneN = all.filter((s) => s.image_url).length;
+  const canMake = !!(jobId && onChanged);
   return (
     <>
-      <div className="toolbar">
+      <div className="toolbar" style={{ flexWrap: 'wrap', gap: 10 }}>
         <div className="seg" role="group" aria-label="Filter by format">
-          {[['all', 'All ' + (pack.statics || []).length, LayoutGrid], ['1:1', 'Feed · ' + count('1:1'), Square], ['9:16', 'Stories · ' + count('9:16'), Smartphone]].map(([k, l, Ic]) => (
+          {[['all', 'All ' + all.length, LayoutGrid], ['1:1', 'Feed · ' + count('1:1'), Square], ['9:16', 'Stories · ' + count('9:16'), Smartphone]].map(([k, l, Ic]) => (
             <button key={k} className={fmt === k ? 'on' : ''} onClick={() => setFmt(k)}><Ic size={13} /> {l}</button>
           ))}
         </div>
-        <span className="note">Previews show the overlay text in your brand color. Rendered images open in Google Drive.</span>
+        <div className="seg" role="group" aria-label="Filter by image status">
+          {[['all', 'Any status'], ['done', 'Images · ' + doneN], ['concept', 'Concepts · ' + all.filter((s) => kind(s) === 'concept').length], ['failed', 'Failed · ' + all.filter((s) => kind(s) === 'failed').length]].map(([k, l]) => (
+            <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>
+          ))}
+        </div>
+        <span style={{ flex: 1 }} />
+        {canMake && missing.length > 0 && (confirmBulk ? (
+          <span className="row gap">
+            <button className="btn sm" onClick={makeAllMissing} disabled={bulk}>Yes, make {missing.length} images (about ${(missing.length * 0.04).toFixed(2)})</button>
+            <button className="ghost" onClick={() => setConfirmBulk(false)}>Cancel</button>
+          </span>
+        ) : (
+          <button className="ghost" onClick={() => setConfirmBulk(true)} disabled={bulk || rendering}>
+            {bulk ? <><Loader2 size={13} className="rot" /> Starting…</> : <><ImageIcon size={13} /> Generate {missing.length} missing image{missing.length === 1 ? '' : 's'}</>}
+          </button>
+        ))}
       </div>
+      <p className="note" style={{ margin: '0 0 12px' }}>{doneN} of {all.length} images made. Concept previews show the overlay text in your brand color; made images are saved in your Google Drive folder.</p>
       {startErr && <div className="banner err"><AlertTriangle size={16} />{startErr}</div>}
-      <div className="cards">
-        {list.map((s) => {
-          const text = [s.headline, '', s.primary_text, '', 'CTA: ' + s.cta, ...((s.hashtags || []).length ? ['', s.hashtags.join(' ')] : [])].join('\n');
-          const busy = /^rendering:/.test(s.image_status || '') || starting === s.id;
-          const failed = /^failed/.test(s.image_status || '');
-          return (
-            <article key={s.id} className="ad">
-              <div className="meta"><span>#{s.id} · {s.aspect} · {s.style}</span>
-                <span className={'pill small ' + (s.image_url ? 'ok' : '')}>{s.image_url ? 'Rendered' : /dry_run|max_images/.test(s.image_status || '') ? 'Concept only' : (s.image_status || 'Concept')}</span></div>
-              <div className={'frame a' + String(s.aspect).replace(':', 'x')} style={{ background: accent ? 'linear-gradient(135deg,' + base + ',' + accent + ')' : base, color: fg }}>
-                <span>{s.overlay_text}</span>
-              </div>
-              <div className="body">
-                <p className="head">{s.headline}</p>
-                <p className="copy pre">{s.primary_text}</p>
-                <Tags list={s.hashtags} />
-                {failed && !busy && <p className="note" style={{ color: 'var(--bad)' }}>{s.image_status}</p>}
-                <div className="foot">
-                  <span className="cta-tag">{s.cta}</span>
-                  <CopyBtn text={text} label="Copy ad copy" />
-                  {s.image_url && <a className="ghost" href={s.image_url} target="_blank" rel="noreferrer">Open image <ExternalLink size={13} /></a>}
-                  {jobId && onChanged && (
-                    <button type="button" className="ghost" disabled={busy} onClick={() => makeImage(s)} title="Makes this one image with OpenAI (about 4 cents at medium quality) and saves it to Drive">
-                      {busy ? <><Loader2 size={13} className="rot" /> Making image…</> : <><ImageIcon size={13} /> {s.image_url ? 'Make again' : 'Generate image'}</>}
-                    </button>
-                  )}
-                </div>
-                <details><summary>Image prompt</summary><p className="small pre muted" style={{ marginTop: 6 }}>{s.image_prompt}</p></details>
-              </div>
-            </article>
-          );
-        })}
+      {list.length === 0 && <p className="muted" style={{ padding: '24px 0' }}>No ads match these filters.</p>}
+      <div className="cards ads">
+        {list.map((s) => (
+          <StaticCard key={s.id} s={s} brand={brand} canMake={canMake} onMake={makeImage} busy={isRendering(s) || starting.has(s.id)} />
+        ))}
       </div>
     </>
   );
