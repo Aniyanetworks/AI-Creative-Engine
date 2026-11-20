@@ -27,7 +27,8 @@ export function createImages({ hookUrl, driveHookUrl, n8nApi, workflowName = 'AC
     isRendering: (s) => /^rendering:/.test((s && s.image_status) || ''),
 
     // Starts one image. Returns the changed result (the caller saves it).
-    async start(job, id) {
+    // opts: { quality: 'low'|'medium'|'high', note: what to change when making it again }
+    async start(job, id, opts = {}) {
       if (!configured) throw Object.assign(new Error('Single-image rendering is not set up yet (run tools/deploy_image_n8n.js).'), { status: 409 });
       const result = job.result;
       const s = result && Array.isArray(result.statics) && result.statics.find((x) => x.id === id);
@@ -35,18 +36,22 @@ export function createImages({ hookUrl, driveHookUrl, n8nApi, workflowName = 'AC
       if (!String(s.image_prompt || '').trim()) throw Object.assign(new Error('This ad has no image prompt.'), { status: 409 });
       if (this.isRendering(s) && now() - new Date(s.image_started || 0).getTime() < TIMEOUT_MS) throw Object.assign(new Error('This image is already being made.'), { status: 409 });
 
+      const q = ['low', 'medium', 'high'].includes(opts.quality) ? opts.quality : quality;
+      const note = String(opts.note || '').replace(/ +/g, ' ').trim().slice(0, 300);
+      const prompt = String(s.image_prompt).trim() + (note ? ' IMPORTANT adjustments requested by the user, apply these: ' + note : '');
       const slug = businessOf(result).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'business';
       const fileName = slug + '_static_' + s.id + '.png';
       let started;
       try {
         started = await postJson(hookUrl, {
-          request_id: Math.random().toString(36).slice(2, 10) + now().toString(36), image_prompt: s.image_prompt, aspect: s.aspect, quality,
+          request_id: Math.random().toString(36).slice(2, 10) + now().toString(36), image_prompt: prompt, aspect: s.aspect, quality: q,
           file_name: fileName, folder_request: { action: 'ensure', ...folderFor(job, result) },
         }, 20000);
       } catch (e) { throw Object.assign(new Error('n8n did not accept the request (' + e.message + '). Is the "' + workflowName + '" workflow active?'), { status: 502 }); }
       if (!started || !started.execution_id) throw Object.assign(new Error('n8n did not report the execution. Re-run tools/deploy_image_n8n.js.'), { status: 502 });
       s.image_status = 'rendering:' + started.execution_id;
       s.image_file = fileName;
+      s.image_quality = q;
       s.image_started = new Date(now()).toISOString();
       return result;
     },

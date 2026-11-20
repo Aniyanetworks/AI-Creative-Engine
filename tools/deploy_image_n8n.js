@@ -20,6 +20,8 @@ const CRED = {
   googleDriveOAuth2Api: { id: 'WpF0dPs521RPKvik', name: 'Manam Google Drive account' },
 };
 const NAME = 'ACE - Render one image';
+// Added to every prompt for clean composition and safe margins (the same text is used in tools/build_workflow.js).
+const PROMPT_GUARD = "Art direction rules: one clear focal point and a strong visual hierarchy; generous empty space around the text; keep every word and key element inside the central 80 percent of the frame with nothing touching the edges (in tall 9:16 images keep the top 14 percent and bottom 20 percent free for app buttons); render ONLY the exact quoted overlay text, spelled correctly, large and high-contrast, with no other words, no fake logos, no watermarks and no gibberish text; polished, uncluttered, native social-ad look with professional lighting and depth; avoid rows of generic icons, flat clip-art and busy grid backgrounds.";
 // gpt-image-1 is not available to this OpenAI account (checked via its model list); gpt-image-2 is. Override with IMAGE_MODEL in .env.
 const IMAGE_MODEL = env.IMAGE_MODEL || 'gpt-image-2';
 
@@ -45,7 +47,7 @@ const nodes = [
     parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `
 const b = $('Receive').first().json.body || {};
 const r = $input.first().json || {};
-const prompt = String(b.image_prompt || '').trim();
+const prompt = (String(b.image_prompt || '').trim() + ' ' + ${JSON.stringify(PROMPT_GUARD)}).trim();
 if (!prompt) throw new Error('No image prompt was sent.');
 const aspect = b.aspect === '9:16' ? '9:16' : '1:1';
 const quality = ['low', 'medium', 'high'].includes(b.quality) ? b.quality : 'medium';

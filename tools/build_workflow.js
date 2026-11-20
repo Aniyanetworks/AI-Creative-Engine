@@ -30,6 +30,9 @@ try {
   driveHookUrl = base + '/webhook/' + fs.readFileSync(path.join(root, 'workflow', '.drive-webhook-path'), 'utf8').trim();
 } catch { /* not deployed yet: uploads go straight to the root folder */ }
 
+// Added to every image prompt so the pictures get clean composition and safe margins, whatever Claude wrote.
+const PROMPT_GUARD = "Art direction rules: one clear focal point and a strong visual hierarchy; generous empty space around the text; keep every word and key element inside the central 80 percent of the frame with nothing touching the edges (in tall 9:16 images keep the top 14 percent and bottom 20 percent free for app buttons); render ONLY the exact quoted overlay text, spelled correctly, large and high-contrast, with no other words, no fake logos, no watermarks and no gibberish text; polished, uncluttered, native social-ad look with professional lighting and depth; avoid rows of generic icons, flat clip-art and busy grid backgrounds.";
+
 const BASE = `
 const cleanTags = (t) => [...new Set((Array.isArray(t) ? t : String(t || '').split(' ')).map((x) => '#' + String(x).replace(/[^A-Za-z0-9_]/g, '')).filter((x) => x.length > 1 && x.length <= 40))].slice(0, 8);
 const cfg = $('Config').first().json;
@@ -288,7 +291,7 @@ const openai = place({
     method: 'POST', url: 'https://api.openai.com/v1/images/generations',
     authentication: 'predefinedCredentialType', nodeCredentialType: 'openAiApi',
     sendBody: true, specifyBody: 'json',
-    jsonBody: "={{ JSON.stringify({ model: $json.image_model, prompt: $json.static.image_prompt, size: $json.static.aspect === '9:16' ? '1024x1536' : '1024x1024', quality: $json.image_quality, n: 1 }) }}",
+    jsonBody: "={{ JSON.stringify({ model: $json.image_model, prompt: $json.static.image_prompt + ' ' + " + JSON.stringify(PROMPT_GUARD) + ", size: $json.static.aspect === '9:16' ? '1024x1536' : '1024x1024', quality: $json.image_quality, n: 1 }) }}",
     options: { timeout: 240000, batching: { batch: { batchSize: 3, batchInterval: 1000 } } },
   },
 });

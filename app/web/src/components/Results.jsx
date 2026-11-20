@@ -53,6 +53,8 @@ const isFailed = (s) => /^failed/.test((s && s.image_status) || '');
 // One ad, laid out like the real thing: page header, caption, picture, headline and button.
 function StaticCard({ s, brand, busy, onMake, canMake }) {
   const [more, setMore] = useState(false);
+  const [refine, setRefine] = useState(false);
+  const [note, setNote] = useState('');
   const [thumbBad, setThumbBad] = useState(false);
   const id = driveId(s.image_url);
   const showImg = !!id && !thumbBad;
@@ -89,13 +91,23 @@ function StaticCard({ s, brand, busy, onMake, canMake }) {
       <Tags list={s.hashtags} />
       <div className="ad-actions">
         {canMake && (
-          <button type="button" className={s.image_url ? 'ghost' : 'btn sm'} disabled={busy} onClick={() => onMake(s)} title="Makes this one image with OpenAI (about 4 cents at medium quality) and saves it to Drive">
+          <button type="button" className={s.image_url ? 'ghost' : 'btn sm'} disabled={busy} onClick={() => (s.image_url ? setRefine(true) : onMake(s))} title="Makes this one image with OpenAI (about 4 cents at medium quality) and saves it to Drive">
             {busy ? <><Loader2 size={13} className="rot" /> Making…</> : <><ImageIcon size={13} /> {s.image_url ? 'Make again' : 'Generate image'}</>}
           </button>
         )}
         {s.image_url && <a className="ghost" href={s.image_url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Open in Drive</a>}
         <CopyBtn text={text} label="Copy ad" />
       </div>
+      {refine && (
+        <div className="refine">
+          <label className="small muted" htmlFor={'note' + s.id}>What should be different? (optional)</label>
+          <textarea id={'note' + s.id} rows={2} maxLength={300} placeholder="e.g. less crowded, a real photo of a technician, bigger headline, darker background" value={note} onChange={(e) => setNote(e.target.value)} />
+          <div className="row gap">
+            <button type="button" className="btn sm" disabled={busy} onClick={() => { onMake(s, note); setRefine(false); setNote(''); }}><ImageIcon size={13} /> Make again</button>
+            <button type="button" className="ghost" onClick={() => setRefine(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
       <details className="ad-more"><summary>Image prompt</summary><p className="small pre muted">{s.image_prompt}</p></details>
     </article>
   );
@@ -117,13 +129,16 @@ function Statics({ pack, jobId, onChanged }) {
     return () => clearInterval(t);
   }, [rendering, onChanged]);
 
-  const startOne = async (s) => {
+  const [quality, setQuality] = useState(() => { try { return localStorage.getItem('ace-img-quality') || 'high'; } catch { return 'high'; } });
+  const pickQuality = (q) => { setQuality(q); try { localStorage.setItem('ace-img-quality', q); } catch { /* private mode */ } };
+  const each = { low: 0.01, medium: 0.04, high: 0.17 }[quality] || 0.04; // rough OpenAI cost per image
+  const startOne = async (s, note) => {
     setStarting((p) => new Set(p).add(s.id));
-    try { await api.renderStatic(jobId, s.id); } finally { setStarting((p) => { const n = new Set(p); n.delete(s.id); return n; }); }
+    try { await api.renderStatic(jobId, s.id, { quality, note: note || '' }); } finally { setStarting((p) => { const n = new Set(p); n.delete(s.id); return n; }); }
   };
-  const makeImage = async (s) => {
+  const makeImage = async (s, note) => {
     setStartErr('');
-    try { await startOne(s); if (onChanged) await onChanged(); } catch (e) { setStartErr(e.message); }
+    try { await startOne(s, note); if (onChanged) await onChanged(); } catch (e) { setStartErr(e.message); }
   };
   const missing = all.filter((s) => !s.image_url && !isRendering(s) && String(s.image_prompt || '').trim());
   const makeAllMissing = async () => {
@@ -160,9 +175,18 @@ function Statics({ pack, jobId, onChanged }) {
           ))}
         </div>
         <span style={{ flex: 1 }} />
+        {canMake && (
+          <label className="qsel small muted">Image quality
+            <select value={quality} onChange={(e) => pickQuality(e.target.value)}>
+              <option value="low">Draft · about 1 cent</option>
+              <option value="medium">Standard · about 4 cents</option>
+              <option value="high">High · about 17 cents</option>
+            </select>
+          </label>
+        )}
         {canMake && missing.length > 0 && (confirmBulk ? (
           <span className="row gap">
-            <button className="btn sm" onClick={makeAllMissing} disabled={bulk}>Yes, make {missing.length} images (about ${(missing.length * 0.04).toFixed(2)})</button>
+            <button className="btn sm" onClick={makeAllMissing} disabled={bulk}>Yes, make {missing.length} images (about ${(missing.length * each).toFixed(2)})</button>
             <button className="ghost" onClick={() => setConfirmBulk(false)}>Cancel</button>
           </span>
         ) : (

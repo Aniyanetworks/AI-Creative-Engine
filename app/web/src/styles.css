@@ -328,3 +328,5 @@ section.card > .urow:first-child { border-top: 0; }
 .ad-more { padding: 0 14px 12px; } .ad-more summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .ad .tags { padding: 0 14px; } .note.bad { color: var(--bad); }
 .btn.sm, .btn.small { padding: 6px 12px; font-size: 13px; }
+.refine { display: grid; gap: 6px; padding: 0 14px 12px; } .refine textarea { width: 100%; resize: vertical; }
+.qsel { display: inline-flex; align-items: center; gap: 8px; } .qsel select { padding: 5px 8px; }

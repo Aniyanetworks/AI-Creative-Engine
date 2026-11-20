@@ -405,7 +405,7 @@ app.post('/api/jobs/:id/statics/:n/image', authenticate, approved, async (req, r
     if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
     if (job.status !== 'success' || !job.result) return res.status(409).json({ error: 'Wait until the run has finished.' });
     const n = parseInt(req.params.n, 10);
-    const result = await images.start(job, n);
+    const result = await images.start(job, n, { quality: req.body && req.body.quality, note: req.body && req.body.note });
     await store.update(job.id, { result });
     res.json({ ok: true });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
