@@ -147,7 +147,7 @@ One-time setup (about 5 minutes):
 
 Troubleshooting: the Videos tab shows the failure reason and a link to the GitHub Actions log. To run it by hand: GitHub > Actions > *Render videos* > Run workflow > paste the run id. A render that has not finished after 45 minutes is reported as failed. Videos over 50 MB are refused by Supabase's free plan; lower the quality in `render.mjs` (`--crf`) if that ever happens.
 
-Tests: `node tools/test_render.mjs` (110 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
+Tests: `node tools/test_render.mjs` (136 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
 
 ### Choosing the voice
 Before a render, the Videos tab has a **Voiceover voice** menu (your choice is remembered in the browser). It lists your ElevenLabs account's voices when the key has the **Voices: Read** permission (add `ELEVENLABS_API_KEY` to Netlify too, so the app can list them); otherwise it shows ElevenLabs' stock voices. Pick *Other* to paste any voice id from ElevenLabs > Voices. The choice goes to the workflow as an input and falls back to the `ELEVENLABS_VOICE_ID` repository variable.
@@ -198,3 +198,7 @@ Finished images are private Drive files, so the page cannot link to them directl
 The webhook paths in `workflow/.*-webhook-path` are secrets (they are git-ignored). If one is ever committed or shared, delete that file and run the matching `tools/deploy_*_n8n.js` again: it creates a new path and the old URL stops working.
 
 The same numbers are shown for a single run: an **Est. $x.xx** chip in the run header (next to Finished) opens a breakdown of Claude tokens, images by quality and videos for that run.
+
+### Generate more, rewrite, and switching AI models
+- **Generate more:** Hooks, Static ads and Videos each have **Generate more ...** (how many, plus an optional focus such as "local businesses"). **Rewrite** on any hook, ad or script asks Claude to improve that one item (optionally with an instruction); its number stays the same. A rewritten ad or script marks its old picture or video as out of date until you make it again. Limits: 10 hooks, 10 ads or 5 scripts per request; 40 hooks, 60 ads or 15 scripts per run. This uses the n8n workflow **ACE - Write more** (`node tools/deploy_write_n8n.js`); on Netlify add `N8N_WRITE_WEBHOOK_URL` (Secret, printed by the script). Each request is logged in the usage report.
+- **Models:** New run > **AI models** picks the writing model and the image model for that run (kept when you run it again). **Generate more** has its own writing-model choice, and the **Image settings** button (quality and image model) applies to Generate image, Make again and Generate missing images. Only models listed in `app/server/models.js` can be used; change the lists with `CLAUDE_MODELS` / `IMAGE_MODELS` and the defaults with `CLAUDE_MODEL` / `IMAGE_MODEL` (comma separated ids, optionally `id:Label`). Cost estimates follow the model (the per-model Claude prices are assumptions; override with `PRICE_CLAUDE_BY_MODEL='{"claude-opus-5-5":[15,75]}'`).

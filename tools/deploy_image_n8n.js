@@ -51,8 +51,9 @@ const prompt = (String(b.image_prompt || '').trim() + ' ' + ${JSON.stringify(PRO
 if (!prompt) throw new Error('No image prompt was sent.');
 const aspect = b.aspect === '9:16' ? '9:16' : '1:1';
 const quality = ['low', 'medium', 'high'].includes(b.quality) ? b.quality : 'medium';
+const model = /^[A-Za-z0-9][A-Za-z0-9._-]{2,59}$/.test(String(b.model || '')) ? String(b.model) : ${JSON.stringify(IMAGE_MODEL)};
 return [{ json: {
-  request_id: String(b.request_id || ''), prompt, size: aspect === '9:16' ? '1024x1536' : '1024x1024', quality,
+  request_id: String(b.request_id || ''), model, prompt, size: aspect === '9:16' ? '1024x1536' : '1024x1024', quality,
   file_name: String(b.file_name || 'static.png').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80),
   folder_id: r.id || ${JSON.stringify(ROOT_ID)}, folder_ok: !!r.id,
 } }];` } },
@@ -60,7 +61,7 @@ return [{ json: {
     retryOnFail: true, maxTries: 2, waitBetweenTries: 5000,
     parameters: { method: 'POST', url: 'https://api.openai.com/v1/images/generations', authentication: 'predefinedCredentialType', nodeCredentialType: 'openAiApi',
       sendBody: true, specifyBody: 'json',
-      jsonBody: "={{ JSON.stringify({ model: " + JSON.stringify(IMAGE_MODEL) + ", prompt: $json.prompt, size: $json.size, quality: $json.quality, n: 1 }) }}",
+      jsonBody: "={{ JSON.stringify({ model: $json.model, prompt: $json.prompt, size: $json.size, quality: $json.quality, n: 1 }) }}",
       options: { timeout: 240000 } } },
   { id: id(), name: 'Make file', type: 'n8n-nodes-base.code', typeVersion: 2, position: [960, 0],
     parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: `

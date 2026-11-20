@@ -340,6 +340,15 @@ previewAnswer.v = { ok: true, ready: false, name: 'x.png' };
 x = await api('GET', '/api/jobs/previewrun02/statics/1/preview');
 check('preview: when Drive has no thumbnail yet the app says not ready (the page asks again)', x.status === 200 && x.json.ready === false && x.json.url === null, JSON.stringify(x));
 
+x = await api('GET', '/api/models');
+check('route: the models that can be picked are listed with the defaults', x.status === 200 && x.json.claude.length >= 3 && x.json.image.length >= 3 && x.json.defaults.claude && x.json.defaults.image, JSON.stringify(x).slice(0, 200));
+runs.set('modelrun01', { status: 'success', result: { statics: [{ id: 1, aspect: '1:1', image_prompt: 'p' }], videos: [] } });
+const modelPost = async (p2, body) => { const y = await fetch('http://127.0.0.1:' + PORT + p2, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: y.status, json: await y.json().catch(() => null) }; };
+x = await modelPost('/api/jobs/modelrun01/statics/1/image', { model: 'not-a-listed-model' });
+check('route: an unlisted image model is refused before anything is sent', x.status === 400 && /not available/.test(x.json.error), JSON.stringify(x));
+x = await modelPost('/api/jobs/modelrun01/write', { kind: 'hooks', op: 'more', model: 'gpt-image-2' });
+check('route: an image model cannot be used for writing', x.status === 400, JSON.stringify(x));
+
 // ---- usage report through the real server ----
 x = await api('GET', '/api/usage?range=all');
 check('route: starting a render is logged and shows in /api/usage with the estimated voice cost', x.status === 200 && x.json.enabled === true && x.json.totals.video.count >= 1 && Math.abs(x.json.totals.video.cost - x.json.totals.video.count * 0.1) < 1e-9 && x.json.byRun.some((r) => r.runId === 'routerun0001'), JSON.stringify(x.json).slice(0, 300));
@@ -395,6 +404,88 @@ runs.set('folderrun005', { created_at: '2026-11-20T10:00:00Z', url: 'https://x.t
 n8n.folderCalls.length = 0;
 x = await delApi('folderrun005');
 check('delete: a run with no result yet does not touch Drive', x.status === 200 && x.json.drive === 'none' && n8n.folderCalls.length === 0, JSON.stringify(x.json));
+
+// ---- "Generate more" and "Rewrite" ----
+{
+  const { createWriter } = await import('../app/server/writer.js');
+  let sent = null; let exec = { status: 'running' }; let clock = Date.parse('2026-11-20T10:00:00Z'); const done = [];
+  const w = createWriter({ hookUrl: 'http://x/write', now: () => clock, onDone: (j, d) => done.push(d),
+    fetchImpl: async (u, o) => { sent = JSON.parse(o.body); return { ok: true, json: async () => ({ execution_id: '900' }) }; },
+    n8nApi: async () => exec });
+  const mk = () => ({ id: 'wr1', result: { brief: { business_name: 'Acme' }, hooks: [{ id: 1, angle: 'pain', hook: 'H1' }, { id: 2, angle: 'time', hook: 'H2' }],
+    statics: [{ id: 1, hook_id: 1, style: 'Bold', aspect: '1:1', headline: 'Head', overlay_text: 'Over', image_prompt: 'p', image_url: 'https://drive.google.com/file/d/OLD/view', image_status: 'ok' }],
+    videos: [{ id: 1, title: 'V1', format: 'PAS', scenes: [{ vo: 'a' }], video_url: null, video_status: 'storyboard ready' }], stats: {} } });
+  const fail = async (fn) => { try { await fn(); return null; } catch (e) { return e; } };
+  const parseOut = (json) => ({ status: 'success', data: { resultData: { runData: { Parse: [{ data: { main: [[{ json }]] } }] } } } });
+  let job = mk();
+  await w.start(job, { kind: 'statics', op: 'more', count: 4, instruction: 'local trades', by: 'u1' });
+  check('write: a request carries the brief, hooks, a summary of the existing ads and the next id', sent.op === 'more' && sent.kind === 'statics' && sent.count === 4 && sent.nextId === 2 && sent.instruction === 'local trades' && sent.brief.business_name === 'Acme' && sent.hooks.length === 2 && sent.existing.length === 1 && sent.existing[0].headline === 'Head' && !('image_url' in sent.existing[0]), JSON.stringify(sent).slice(0, 300));
+  check('write: the run remembers what is being written', job.result.write.execId === '900' && job.result.write.kind === 'statics' && job.result.write.by === 'u1');
+  check('write: a second request while one is running is refused', (await fail(() => w.start(job, { kind: 'hooks', op: 'more', count: 3 })))?.status === 409);
+  check('write: still running means no change yet', (await w.resolve(job)) === null && !!job.result.write);
+  exec = parseOut({ kind: 'statics', op: 'more', usage: { input_tokens: 100, output_tokens: 200 }, items: [{ id: 2, hook_id: 2, style: 'Photo', aspect: '9:16', headline: 'New A', image_prompt: 'p2' }, { id: 3, hook_id: 1, style: 'UI', aspect: '1:1', headline: 'New B', image_prompt: 'p3' }] });
+  const merged = await w.resolve(job);
+  check('write: new ads are appended with their ids, marked as concepts, and the counters follow', !!merged && job.result.statics.length === 3 && job.result.statics[1].headline === 'New A' && job.result.statics[2].id === 3 && job.result.statics[1].image_url === null && /concept/.test(job.result.statics[1].image_status) && job.result.stats.statics_total === 3 && !job.result.write, JSON.stringify(job.result.statics.map((x) => x.id)));
+  check('write: the Claude tokens are reported for the usage log', done.length === 1 && done[0].usage.input_tokens === 100 && done[0].kind === 'statics' && done[0].by === 'u1');
+
+  job = mk(); exec = { status: 'running' };
+  await w.start(job, { kind: 'statics', op: 'update', id: 1, instruction: 'shorter' });
+  check('write: a rewrite sends the current item without image fields', sent.op === 'update' && sent.item.id === 1 && sent.item.headline === 'Head' && !('image_url' in sent.item) && sent.instruction === 'shorter', JSON.stringify(sent.item));
+  exec = parseOut({ items: [{ id: 1, headline: 'Shorter head', image_prompt: 'p9', aspect: '1:1' }] });
+  await w.resolve(job);
+  const rs = job.result.statics[0];
+  check('write: a rewritten ad keeps its id, hook and old image, and is flagged so the page can say the picture is stale', rs.headline === 'Shorter head' && rs.id === 1 && rs.hook_id === 1 && rs.image_url.endsWith('/OLD/view') && rs.image_stale === true && rs.rewritten === true, JSON.stringify(rs));
+
+  job = mk(); exec = { status: 'running' };
+  await w.start(job, { kind: 'videos', op: 'update', id: 1 });
+  exec = parseOut({ items: [{ id: 1, title: 'V1 new', scenes: [{ vo: 'b' }] }] });
+  await w.resolve(job);
+  check('write: a rewritten video script keeps its render fields', job.result.videos[0].title === 'V1 new' && job.result.videos[0].video_status === 'storyboard ready' && job.result.videos[0].rewritten === true);
+
+  job = mk(); exec = { status: 'running' };
+  await w.start(job, { kind: 'hooks', op: 'more', count: 3 });
+  exec = { status: 'error', data: { resultData: { error: { message: 'Anthropic error: overloaded' } } } };
+  await w.resolve(job);
+  check('write: a failed request is reported on the run and does not change anything', /overloaded/.test(job.result.write.error) && job.result.hooks.length === 2);
+  check('write: after a failure the error can be dismissed and a new request is allowed', !!w.dismiss(job) && !job.result.write && !!(await w.start(job, { kind: 'hooks', op: 'more', count: 3 })) && !!job.result.write);
+  exec = { status: 'running' }; clock += 7 * 60 * 1000;
+  await w.resolve(job);
+  check('write: a request that never finishes times out', /Timed out/.test(job.result.write.error));
+
+  job = mk();
+  await w.start(job, { kind: 'videos', op: 'more', count: 99 });
+  check('write: the number per request is capped', sent.count === 5);
+  check('write: the total per run is capped', (await fail(() => w.start({ id: 'x', result: { hooks: new Array(39).fill({ id: 1 }) } }, { kind: 'hooks', op: 'more', count: 5 })))?.status === 409);
+  check('write: unknown kind or item is refused', (await fail(() => w.start(mk(), { kind: 'nope', op: 'more' })))?.status === 400 && (await fail(() => w.start(mk(), { kind: 'hooks', op: 'update', id: 99 })))?.status === 404);
+  check('write: without the webhook the feature says so', (await fail(() => createWriter({ hookUrl: '' }).start(mk(), { kind: 'hooks', op: 'more' })))?.status === 409);
+}
+
+// ---- choosing AI models ----
+{
+  const { createModels } = await import('../app/server/models.js');
+  const { createUsage, pricesFrom } = await import('../app/server/usage.js');
+  const { createImages } = await import('../app/server/images.js');
+  const { createWriter } = await import('../app/server/writer.js');
+  const m = createModels(() => '');
+  check('models: sensible defaults for writing and images', m.defaults.claude === 'claude-sonnet-5-5' && m.defaults.image === 'gpt-image-2' && m.claude.length >= 3 && m.image.length >= 3);
+  check('models: only listed models can be picked; empty means the default', m.pick('claude', 'claude-opus-5-5') === 'claude-opus-5-5' && m.pick('image', '') === '' && (() => { try { m.pick('claude', 'gpt-image-2'); return false; } catch (e) { return e.status === 400; } })() && (() => { try { m.pick('image', 'super-expensive-model'); return false; } catch (e) { return e.status === 400; } })());
+  const env = createModels((k) => ({ CLAUDE_MODELS: 'my-model-1:Mine, other-2', CLAUDE_MODEL: 'other-2', IMAGE_MODEL: 'not-listed' }[k] || ''));
+  check('models: lists and defaults can be overridden; an unlisted default falls back to the first listed one', env.claude.length === 2 && env.claude[0].label === 'Mine' && env.defaults.claude === 'other-2' && env.defaults.image === 'gpt-image-2');
+  const pr = pricesFrom(() => '');
+  const mem = []; const us = createUsage({ store: { usage: { async add(e) { mem.push(e); }, async has() { return false; }, async list() { return mem; } } }, prices: pr });
+  check('usage: the writing model changes the estimate (opus > sonnet > haiku)', us.costOf.claude(1e6, 1e6, 'claude-opus-5-5') > us.costOf.claude(1e6, 1e6, 'claude-sonnet-5-5') && us.costOf.claude(1e6, 1e6, 'claude-sonnet-5-5') > us.costOf.claude(1e6, 1e6, 'claude-haiku-5-5') && us.costOf.claude(1e6, 0, 'unknown-model') === 3);
+  check('usage: the mini image model is estimated cheaper, and exact prices can be overridden', us.costOf.image(10, 'medium', 'gpt-image-1-mini') < us.costOf.image(10, 'medium', 'gpt-image-2') && createUsage({ store: null, prices: pricesFrom((k) => (k === 'PRICE_CLAUDE_BY_MODEL' ? '{"x-model":[7,9]}' : '')) }).costOf.claude(1e6, 1e6, 'x-model') === 16);
+  let imgBody = null;
+  const im = createImages({ hookUrl: 'http://x/i', fetchImpl: async (u, o) => { imgBody = JSON.parse(o.body); return { ok: true, json: async () => ({ execution_id: '1' }) }; }, n8nApi: async () => ({}) });
+  const ij = { id: 'abcdef123456', createdAt: '2026-11-20T09:00:00Z', result: { business: 'A', statics: [{ id: 1, aspect: '1:1', image_prompt: 'p' }] } };
+  await im.start(ij, 1, { model: 'gpt-image-1.5', quality: 'low' });
+  check('images: the chosen model is sent to the workflow and remembered on the ad', imgBody.model === 'gpt-image-1.5' && imgBody.quality === 'low' && ij.result.statics[0].image_model === 'gpt-image-1.5');
+  let wBody = null;
+  const wr = createWriter({ hookUrl: 'http://x/w', fetchImpl: async (u, o) => { wBody = JSON.parse(o.body); return { ok: true, json: async () => ({ execution_id: '2' }) }; }, n8nApi: async () => ({}) });
+  const wj = { id: 'w1', result: { brief: {}, hooks: [], statics: [], videos: [] } };
+  await wr.start(wj, { kind: 'hooks', op: 'more', count: 3, model: 'claude-opus-5-5' });
+  check('write: the chosen writing model is sent and remembered for the usage log', wBody.model === 'claude-opus-5-5' && wj.result.write.model === 'claude-opus-5-5');
+}
 
 // ---- usage and cost report ----
 {

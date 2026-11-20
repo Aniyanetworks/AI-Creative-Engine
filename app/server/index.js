@@ -16,6 +16,8 @@ import { createRenderer } from './render.js';
 import { listVoices, isVoiceId } from './voices.js';
 import { createDrive } from './drive.js';
 import { createImages } from './images.js';
+import { createWriter } from './writer.js';
+import { createModels } from './models.js';
 import { createUsage, pricesFrom, claudeUsageFromRunData } from './usage.js';
 
 dns.setDefaultResultOrder('ipv4first');
@@ -84,9 +86,18 @@ if (!previewHook) {
 }
 const previewCache = new Map(); // Drive file id -> { url, at }
 
+// "Generate more" / "Rewrite" (workflow "ACE - Write more"): N8N_WRITE_WEBHOOK_URL, or the local path file.
+let writeHook = pick('N8N_WRITE_WEBHOOK_URL');
+if (!writeHook) {
+  try { writeHook = N8N_BASE + '/webhook/' + fs.readFileSync(path.join(projectRoot, 'workflow', '.write-webhook-path'), 'utf8').trim(); } catch { /* not deployed or on Netlify */ }
+}
+
+const models = createModels(pick);
+
 // Usage and cost report (see app/server/usage.js)
 const usage = createUsage({ store, prices: pricesFrom(pick), profiles: store.profiles });
-const images = createImages({ hookUrl: imageHook, driveHookUrl: driveHook, n8nApi: (p) => n8n(p), quality: pick('IMAGE_QUALITY') || 'medium', onDone: (job, s) => usage.recordImage(job, s.image_quality || 'medium', s.image_by) });
+const writer = createWriter({ hookUrl: writeHook, n8nApi: (p) => n8n(p), onDone: (job, w) => usage.recordWrite(job, { inTok: (w.usage && w.usage.input_tokens) || 0, outTok: (w.usage && w.usage.output_tokens) || 0, kind: w.kind, op: w.op, count: w.count, model: w.model || models.defaults.claude }, w.by) });
+const images = createImages({ hookUrl: imageHook, driveHookUrl: driveHook, n8nApi: (p) => n8n(p), quality: pick('IMAGE_QUALITY') || 'medium', onDone: (job, s) => usage.recordImage(job, s.image_quality || 'medium', s.image_by, s.image_model || models.defaults.image) });
 
 const AUTH_ON = store.kind === 'supabase' && pick('AUTH_REQUIRED').toLowerCase() !== 'false';
 const auth = AUTH_ON ? createAuth({ supabaseUrl: SUPABASE_URL, apiKey: SUPABASE_PUBLISHABLE || SUPABASE_KEY }) : null;
@@ -200,7 +211,7 @@ async function refreshJob(job) {
       const runData = exec && exec.data && exec.data.resultData && exec.data.resultData.runData;
       const cu = claudeUsageFromRunData(runData);
       const cfg = firstJson(runData, 'Config') || {};
-      await usage.recordRun(job, { ...cu, images: (out.result && out.result.stats && out.result.stats.statics_rendered) || 0, imageQuality: cfg.image_quality || 'medium' });
+      await usage.recordRun(job, { ...cu, model: cu.model || (job.options && job.options.models && job.options.models.claude) || models.defaults.claude, imageModel: (job.options && job.options.models && job.options.models.image) || models.defaults.image, images: (out.result && out.result.stats && out.result.stats.statics_rendered) || 0, imageQuality: cfg.image_quality || 'medium' });
     }
     if (out.status === 'success' && renderer.shouldAuto(job, out.result)) {
       try {
@@ -337,11 +348,15 @@ async function launchJob(user, input) {
   const clamp = (v, max) => Math.max(0, Math.min(max, parseInt(v, 10) || 0));
   const notes = String(input.competitorNotes || '').slice(0, 20000);
   // competitorNotes is kept with the run so "run again" can reuse it (it is not sent back in the run list).
-  const options = { dryRun: !!input.dryRun, maxImages: clamp(input.maxImages, 20), maxVideos: clamp(input.maxVideos, 5), ...(notes ? { competitorNotes: notes } : {}) };
+  // Models chosen for this run (only allowed ids; empty = the defaults). Kept in the options so "run again" reuses them.
+  const m = input.models || {};
+  const pickedModels = { claude: models.pick('claude', m.claude), image: models.pick('image', m.image) };
+  const options = { dryRun: !!input.dryRun, maxImages: clamp(input.maxImages, 20), maxVideos: clamp(input.maxVideos, 5), ...(pickedModels.claude || pickedModels.image ? { models: pickedModels } : {}), ...(notes ? { competitorNotes: notes } : {}) };
   const job = { id: crypto.randomBytes(6).toString('hex'), url: u.href, businessName: String(input.businessName || '').slice(0, 120), createdAt: new Date().toISOString(), options, executionId: null, userId: user.id };
   const body = {
     url: job.url, business_name: job.businessName, competitor_notes: notes,
     dry_run: options.dryRun, max_images: options.maxImages, max_videos: options.maxVideos, job_id: job.id,
+    ...(pickedModels.claude ? { claude_model: pickedModels.claude } : {}), ...(pickedModels.image ? { image_model: pickedModels.image } : {}),
   };
   const r = await fetch(N8N_BASE + '/webhook/' + webhookPath, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
   if (!r.ok) throw httpError(502, 'n8n webhook answered HTTP ' + r.status + '. Is the workflow active?');
@@ -366,6 +381,7 @@ app.post('/api/jobs/:id/rerun', authenticate, approved, async (req, res) => {
     const id = await launchJob(req.user, {
       url: old.url, businessName: old.businessName, competitorNotes: o.competitorNotes,
       dryRun: pickOpt('dryRun'), maxImages: pickOpt('maxImages'), maxVideos: pickOpt('maxVideos'),
+      models: b.models || o.models,
     });
     res.json({ id });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
@@ -412,6 +428,8 @@ app.get('/api/jobs/:id', authenticate, approved, async (req, res) => {
     if (out.status === 'success' && out.result) {
       const updated = await images.resolve({ ...job, result: out.result }).catch(() => null);
       if (updated) { await store.update(job.id, { result: updated }); out.result = updated; }
+      const written = await writer.resolve({ ...job, result: out.result }).catch(() => null);
+      if (written) { await store.update(job.id, { result: written }); out.result = written; }
     }
     res.json(out);
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
@@ -437,6 +455,28 @@ app.get('/api/jobs/:id/statics/:n/preview', authenticate, approved, async (req, 
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
+// Write more hooks / ads / scripts, or rewrite one (see app/server/writer.js).
+app.post('/api/jobs/:id/write', authenticate, approved, async (req, res) => {
+  try {
+    const job = await store.get(req.params.id);
+    if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
+    if (job.status !== 'success' || !job.result) return res.status(409).json({ error: 'Wait until the run has finished.' });
+    const b = req.body || {};
+    const result = await writer.start(job, { model: models.pick('claude', b.model), kind: b.kind, op: b.op, count: b.count, instruction: b.instruction, id: parseInt(b.id, 10), by: req.user.id });
+    await store.update(job.id, { result });
+    res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+app.post('/api/jobs/:id/write/dismiss', authenticate, approved, async (req, res) => {
+  try {
+    const job = await store.get(req.params.id);
+    if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
+    const result = writer.dismiss(job);
+    if (result) await store.update(job.id, { result });
+    res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
 // Generate (or regenerate) the image of one static ad.
 app.post('/api/jobs/:id/statics/:n/image', authenticate, approved, async (req, res) => {
   try {
@@ -444,7 +484,7 @@ app.post('/api/jobs/:id/statics/:n/image', authenticate, approved, async (req, r
     if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
     if (job.status !== 'success' || !job.result) return res.status(409).json({ error: 'Wait until the run has finished.' });
     const n = parseInt(req.params.n, 10);
-    const result = await images.start(job, n, { quality: req.body && req.body.quality, note: req.body && req.body.note, by: req.user.id });
+    const result = await images.start(job, n, { model: models.pick('image', req.body && req.body.model), quality: req.body && req.body.quality, note: req.body && req.body.note, by: req.user.id });
     await store.update(job.id, { result });
     res.json({ ok: true });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
@@ -504,6 +544,9 @@ app.get('/api/usage', authenticate, approved, async (req, res) => {
     res.json(await usage.report({ viewer: req.user, range, userId: req.query.user, jobs }));
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
+
+// The AI models that can be chosen (and the defaults), for the pickers in the app.
+app.get('/api/models', authenticate, approved, (_req, res) => res.json({ claude: models.claude, image: models.image, defaults: models.defaults }));
 
 // Voices to choose from for the voiceover (the account's own when the key allows listing, else stock voices).
 app.get('/api/voices', authenticate, approved, async (_req, res) => {

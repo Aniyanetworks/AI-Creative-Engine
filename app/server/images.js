@@ -28,7 +28,7 @@ export function createImages({ hookUrl, driveHookUrl, n8nApi, workflowName = 'AC
 
     // Starts one image. Returns the changed result (the caller saves it).
     // opts: { quality: 'low'|'medium'|'high', note: what to change when making it again }
-    async start(job, id, opts = {}) { // opts.by = the account that clicked (kept for the usage report)
+    async start(job, id, opts = {}) { // opts.model = an allowed image model id (the caller validates it) // opts.by = the account that clicked (kept for the usage report)
       if (!configured) throw Object.assign(new Error('Single-image rendering is not set up yet (run tools/deploy_image_n8n.js).'), { status: 409 });
       const result = job.result;
       const s = result && Array.isArray(result.statics) && result.statics.find((x) => x.id === id);
@@ -44,7 +44,7 @@ export function createImages({ hookUrl, driveHookUrl, n8nApi, workflowName = 'AC
       let started;
       try {
         started = await postJson(hookUrl, {
-          request_id: Math.random().toString(36).slice(2, 10) + now().toString(36), image_prompt: prompt, aspect: s.aspect, quality: q,
+          request_id: Math.random().toString(36).slice(2, 10) + now().toString(36), image_prompt: prompt, aspect: s.aspect, quality: q, model: opts.model || undefined,
           file_name: fileName, folder_request: { action: 'ensure', ...folderFor(job, result) },
         }, 20000);
       } catch (e) { throw Object.assign(new Error('n8n did not accept the request (' + e.message + '). Is the "' + workflowName + '" workflow active?'), { status: 502 }); }
@@ -52,6 +52,7 @@ export function createImages({ hookUrl, driveHookUrl, n8nApi, workflowName = 'AC
       s.image_status = 'rendering:' + started.execution_id;
       s.image_file = fileName;
       s.image_quality = q;
+      s.image_model = opts.model || null;
       s.image_by = opts.by || null;
       s.image_started = new Date(now()).toISOString();
       return result;

@@ -33,8 +33,10 @@ try {
 // Added to every image prompt so the pictures get clean composition and safe margins, whatever Claude wrote.
 const PROMPT_GUARD = "Art direction rules: one clear focal point and a strong visual hierarchy; generous empty space around the text; keep every word and key element inside the central 80 percent of the frame with nothing touching the edges (in tall 9:16 images keep the top 14 percent and bottom 20 percent free for app buttons); render ONLY the exact quoted overlay text, spelled correctly, large and high-contrast, with no other words, no fake logos, no watermarks and no gibberish text; polished, uncluttered, native social-ad look with professional lighting and depth; avoid rows of generic icons, flat clip-art and busy grid backgrounds.";
 
+const { CLEAN_TAGS, VIDEO_NORMALIZER } = require('./lib/fragments');
+
 const BASE = `
-const cleanTags = (t) => [...new Set((Array.isArray(t) ? t : String(t || '').split(' ')).map((x) => '#' + String(x).replace(/[^A-Za-z0-9_]/g, '')).filter((x) => x.length > 1 && x.length <= 40))].slice(0, 8);
+${CLEAN_TAGS}
 const cfg = $('Config').first().json;
 const input = $('Webhook').first().json.body || {};
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -152,7 +154,7 @@ ${pre}
 const SYSTEM = ${prompt(promptFile)};
 const user = ${user};
 return [{ json: { ...ctx, ...extra, _req: {
-  model: cfg.claude_model, max_tokens: ${maxTokens}, system: SYSTEM,
+  model: input.claude_model || cfg.claude_model, max_tokens: ${maxTokens}, system: SYSTEM,
   messages: [{ role: 'user', content: user }],
 } } }];
 `);
@@ -278,7 +280,7 @@ const splitName = place({
   parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: BASE + `
 const base = $input.first().json;
 const slug = String((base.brief && base.brief.business_name) || 'business').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'business';
-return base.statics.slice(0, base.render_count).map((s) => ({ json: { static: s, slug, image_model: cfg.image_model, image_quality: cfg.image_quality } }));
+return base.statics.slice(0, base.render_count).map((s) => ({ json: { static: s, slug, image_model: input.image_model || cfg.image_model, image_quality: cfg.image_quality } }));
 ` },
 });
 links.push([anyRenders, splitName, 0]);
@@ -351,36 +353,8 @@ llmStep('Video Scripts', 'video_scripts', 12000, {
   parse: `
 if (!Array.isArray(data.videos) || data.videos.length < 5) throw new Error('Expected 5 video scripts, got ' + (data.videos || []).length);
 
-const ICONS = ['bolt', 'clock', 'phone', 'shield', 'chart', 'check', 'wrench', 'star', 'mail', 'calendar', 'target', 'dollar'];
-const KINDS = ['hook', 'point', 'proof', 'cta'];
-const str = (v, n) => String(v == null ? '' : v).replace(/\\s+/g, ' ').trim().slice(0, n);
-
-// Fallback storyboard when the model returns only a plain script: one scene per sentence.
-const scenesFromScript = (script, cta) => {
-  const sentences = String(script || '').match(/[^.!?]+[.!?]*/g) || [];
-  const parts = sentences.map((x) => x.trim()).filter(Boolean).slice(0, 6);
-  return parts.map((vo, i) => ({
-    kind: i === 0 ? 'hook' : i === parts.length - 1 ? 'cta' : 'point',
-    vo, headline: vo.split(' ').slice(0, 5).join(' ').replace(/[.,!?]+$/, ''), highlight: '', sub: i === parts.length - 1 ? str(cta, 40) : '', icon: 'star',
-  }));
-};
-
-const videos = data.videos.slice(0, 5).map((v, i) => {
-  let scenes = Array.isArray(v.scenes) ? v.scenes : [];
-  if (scenes.length < 3) scenes = scenesFromScript(v.spoken_script, v.cta);
-  scenes = scenes.slice(0, 7).map((sc, k, all) => {
-    const headline = str(sc.headline, 40);
-    const words = headline.split(' ');
-    const hl = words.find((w) => w.toLowerCase().replace(/[^a-z0-9%+$]/g, '') === String(sc.highlight || '').toLowerCase().replace(/[^a-z0-9%+$]/g, '')) || '';
-    return {
-      kind: KINDS.includes(sc.kind) ? sc.kind : k === 0 ? 'hook' : k === all.length - 1 ? 'cta' : 'point',
-      vo: str(sc.vo, 220), headline, highlight: hl, sub: str(sc.sub, 60), icon: ICONS.includes(sc.icon) ? sc.icon : 'star',
-    };
-  }).filter((sc) => sc.vo);
-  if (scenes.length < 2) throw new Error('Video ' + (i + 1) + ' has no usable storyboard');
-  const spoken = scenes.map((sc) => sc.vo).join(' '); // the voiceover is exactly the scene lines
-  return { ...v, id: v.id || i + 1, hashtags: cleanTags(v.hashtags), scenes, spoken_script: spoken, captions: scenes.map((sc) => sc.headline) };
-});
+${VIDEO_NORMALIZER}
+const videos = data.videos.slice(0, 5).map((v, i) => normalizeVideo(v, i));
 return [{ json: { ...ctx, videos } }];`,
 });
 

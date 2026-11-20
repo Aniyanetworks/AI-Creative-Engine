@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
+import { MoreBar, RewriteBox } from './WriteTools.jsx';
+import ImageSettings, { QUALITIES } from './ImageSettings.jsx';
+import { useModels, loadChoice, saveChoice } from '../models.js';
 import { Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
 
 const TABS = ['Hooks', 'Static ads', 'Videos', 'Brief', 'Competitors', 'Report'];
@@ -28,17 +31,18 @@ const luminance = (hex) => {
 };
 const List = ({ items }) => (items && items.length ? <ul className="plain">{items.map((x, i) => <li key={i}>{typeof x === 'string' ? x : JSON.stringify(x)}</li>)}</ul> : <p className="muted small">None</p>);
 
-function Hooks({ pack }) {
+function Hooks({ pack, jobId, onChanged }) {
   const all = (pack.hooks || []).map((h) => h.id + '. ' + h.hook).join('\n');
   return (
     <>
       <div className="toolbar"><span className="muted small">{(pack.hooks || []).length} hooks across different angles</span><CopyBtn text={all} label="Copy all hooks" /></div>
+      <MoreBar kind="hooks" pack={pack} jobId={jobId} onChanged={onChanged} />
       <div className="hooklist">
         {(pack.hooks || []).map((h) => (
           <article key={h.id} className="hook">
             <span className="num">{h.id}</span>
-            <div><span className="tag">{h.angle}</span><q>{h.hook}</q><p className="why">{h.why_it_works}</p></div>
-            <div className="acts"><CopyBtn text={h.hook} /></div>
+            <div><span className="tag">{h.angle}</span>{h.rewritten && <span className="tag" style={{ marginLeft: 6 }}>rewritten</span>}<q>{h.hook}</q><p className="why">{h.why_it_works}</p></div>
+            <div className="acts"><CopyBtn text={h.hook} /><RewriteBox kind="hooks" item={h} pack={pack} jobId={jobId} onChanged={onChanged} compact /></div>
           </article>
         ))}
       </div>
@@ -51,7 +55,7 @@ const isRendering = (s) => /^rendering:/.test((s && s.image_status) || '');
 const isFailed = (s) => /^failed/.test((s && s.image_status) || '');
 
 // One ad, laid out like the real thing: page header, caption, picture, headline and button.
-function StaticCard({ s, brand, jobId, busy, onMake, canMake }) {
+function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake }) {
   const [more, setMore] = useState(false);
   const [refine, setRefine] = useState(false);
   const [note, setNote] = useState('');
@@ -106,6 +110,7 @@ function StaticCard({ s, brand, jobId, busy, onMake, canMake }) {
           {state === 'making' ? <><Loader2 size={12} className="rot" /> Making image…</> : state === 'done' ? 'Image ready' : state === 'failed' ? 'Failed' : 'Concept preview'}
         </span>
       </div>
+      {s.image_stale && <p className="note" style={{ padding: '6px 14px 0', margin: 0 }}>The concept was rewritten: this picture shows the old version. Use Make again to match.</p>}
       <div className="ad-cta">
         <div><b>{s.headline}</b>{s.description ? <span>{s.description}</span> : null}</div>
         <span className="cta-tag">{s.cta}</span>
@@ -120,6 +125,7 @@ function StaticCard({ s, brand, jobId, busy, onMake, canMake }) {
         )}
         {s.image_url && <a className="ghost" href={s.image_url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Open in Drive</a>}
         <CopyBtn text={text} label="Copy ad" />
+        <RewriteBox kind="statics" item={s} pack={pack} jobId={jobId} onChanged={onChanged} compact />
       </div>
       {refine && (
         <div className="refine">
@@ -154,10 +160,13 @@ function Statics({ pack, jobId, onChanged }) {
 
   const [quality, setQuality] = useState(() => { try { return localStorage.getItem('ace-img-quality') || 'high'; } catch { return 'high'; } });
   const pickQuality = (q) => { setQuality(q); try { localStorage.setItem('ace-img-quality', q); } catch { /* private mode */ } };
-  const each = { low: 0.01, medium: 0.04, high: 0.17 }[quality] || 0.04; // rough OpenAI cost per image
+  const models = useModels();
+  const [imgModel, setImgModel] = useState(() => loadChoice('ace-img-model'));
+  const pickModel = (m) => { setImgModel(m); saveChoice('ace-img-model', m === (models && models.defaults.image) ? '' : m); };
+  const each = (QUALITIES.find((x) => x.id === quality) || QUALITIES[1]).cost * (/mini/i.test(imgModel) ? 0.35 : 1); // rough OpenAI cost per image
   const startOne = async (s, note) => {
     setStarting((p) => new Set(p).add(s.id));
-    try { await api.renderStatic(jobId, s.id, { quality, note: note || '' }); } finally { setStarting((p) => { const n = new Set(p); n.delete(s.id); return n; }); }
+    try { await api.renderStatic(jobId, s.id, { quality, model: imgModel || undefined, note: note || '' }); } finally { setStarting((p) => { const n = new Set(p); n.delete(s.id); return n; }); }
   };
   const makeImage = async (s, note) => {
     setStartErr('');
@@ -186,44 +195,47 @@ function Statics({ pack, jobId, onChanged }) {
   const canMake = !!(jobId && onChanged);
   return (
     <>
-      <div className="toolbar" style={{ flexWrap: 'wrap', gap: 10 }}>
-        <div className="seg" role="group" aria-label="Filter by format">
-          {[['all', 'All ' + all.length, LayoutGrid], ['1:1', 'Feed · ' + count('1:1'), Square], ['9:16', 'Stories · ' + count('9:16'), Smartphone]].map(([k, l, Ic]) => (
-            <button key={k} className={fmt === k ? 'on' : ''} onClick={() => setFmt(k)}><Ic size={13} /> {l}</button>
-          ))}
+      <div className="stoolbar">
+        <div className="filters">
+          <div className="seg" role="group" aria-label="Filter by format">
+            {[['all', 'All ' + all.length, LayoutGrid], ['1:1', 'Feed · ' + count('1:1'), Square], ['9:16', 'Stories · ' + count('9:16'), Smartphone]].map(([k, l, Ic]) => (
+              <button key={k} className={fmt === k ? 'on' : ''} onClick={() => setFmt(k)}><Ic size={13} /> {l}</button>
+            ))}
+          </div>
+          <div className="seg" role="group" aria-label="Filter by image status">
+            {[['all', 'Any status'], ['done', 'Images · ' + doneN], ['concept', 'Concepts · ' + all.filter((s) => kind(s) === 'concept').length], ['failed', 'Failed · ' + all.filter((s) => kind(s) === 'failed').length]].map(([k, l]) => (
+              <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>
+            ))}
+          </div>
         </div>
-        <div className="seg" role="group" aria-label="Filter by image status">
-          {[['all', 'Any status'], ['done', 'Images · ' + doneN], ['concept', 'Concepts · ' + all.filter((s) => kind(s) === 'concept').length], ['failed', 'Failed · ' + all.filter((s) => kind(s) === 'failed').length]].map(([k, l]) => (
-            <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>
-          ))}
+        <div className="makepanel">
+          <div className="mp-progress" title="Concept previews show the overlay text in your brand color; made images are saved in your Google Drive folder.">
+            <div className="mp-bar" role="progressbar" aria-valuemin={0} aria-valuemax={all.length} aria-valuenow={doneN}><i style={{ width: (all.length ? Math.round((doneN / all.length) * 100) : 0) + '%' }} /></div>
+            <span><b>{doneN}</b> of {all.length} images made</span>
+          </div>
+          {canMake && (
+            <div className="mp-actions">
+              <ImageSettings quality={quality} onQuality={pickQuality} model={imgModel} onModel={pickModel} models={models} />
+              {missing.length > 0 && (confirmBulk ? (
+                <>
+                  <button className="btn sm" onClick={makeAllMissing} disabled={bulk}>Make {missing.length} images · about ${(missing.length * each).toFixed(2)}</button>
+                  <button className="ghost" onClick={() => setConfirmBulk(false)}>Cancel</button>
+                </>
+              ) : (
+                <button className="btn sm" onClick={() => setConfirmBulk(true)} disabled={bulk || rendering}>
+                  {bulk ? <><Loader2 size={13} className="rot" /> Starting…</> : <><ImageIcon size={13} /> Generate {missing.length} missing</>}
+                </button>
+              ))}
+              <MoreBar kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} />
+            </div>
+          )}
         </div>
-        <span style={{ flex: 1 }} />
-        {canMake && (
-          <label className="qsel small muted">Image quality
-            <select value={quality} onChange={(e) => pickQuality(e.target.value)}>
-              <option value="low">Draft · about 1 cent</option>
-              <option value="medium">Standard · about 4 cents</option>
-              <option value="high">High · about 17 cents</option>
-            </select>
-          </label>
-        )}
-        {canMake && missing.length > 0 && (confirmBulk ? (
-          <span className="row gap">
-            <button className="btn sm" onClick={makeAllMissing} disabled={bulk}>Yes, make {missing.length} images (about ${(missing.length * each).toFixed(2)})</button>
-            <button className="ghost" onClick={() => setConfirmBulk(false)}>Cancel</button>
-          </span>
-        ) : (
-          <button className="ghost" onClick={() => setConfirmBulk(true)} disabled={bulk || rendering}>
-            {bulk ? <><Loader2 size={13} className="rot" /> Starting…</> : <><ImageIcon size={13} /> Generate {missing.length} missing image{missing.length === 1 ? '' : 's'}</>}
-          </button>
-        ))}
       </div>
-      <p className="note" style={{ margin: '0 0 12px' }}>{doneN} of {all.length} images made. Concept previews show the overlay text in your brand color; made images are saved in your Google Drive folder.</p>
       {startErr && <div className="banner err"><AlertTriangle size={16} />{startErr}</div>}
       {list.length === 0 && <p className="muted" style={{ padding: '24px 0' }}>No ads match these filters.</p>}
       <div className="cards ads">
         {list.map((s) => (
-          <StaticCard key={s.id} s={s} brand={brand} jobId={jobId} canMake={canMake} onMake={makeImage} busy={isRendering(s) || starting.has(s.id)} />
+          <StaticCard key={s.id} s={s} brand={brand} pack={pack} onChanged={onChanged} jobId={jobId} canMake={canMake} onMake={makeImage} busy={isRendering(s) || starting.has(s.id)} />
         ))}
       </div>
     </>
@@ -393,7 +405,7 @@ function RenderPanel({ jobId, render, ids, selected }) {
   );
 }
 
-function Videos({ pack, jobId }) {
+function Videos({ pack, jobId, onChanged }) {
   const videos = pack.videos || [];
   const hasBoards = videos.some((v) => (v.scenes || []).length);
   const render = useRender(hasBoards ? jobId : null);
@@ -422,6 +434,7 @@ function Videos({ pack, jobId }) {
   const files = (render.st && render.st.videos) || [];
   return (
     <>
+      <MoreBar kind="videos" pack={pack} jobId={jobId} onChanged={onChanged} />
       {hasBoards && <RenderPanel jobId={jobId} render={render} ids={ids} selected={selected} />}
       {oneErr && <div className="banner err"><AlertTriangle size={16} />{oneErr}</div>}
       <div className="cards" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
@@ -455,6 +468,7 @@ function Videos({ pack, jobId }) {
                   ))}
                 </ol>
               ) : <div className="script">{v.spoken_script}</div>}
+              {v.video_stale && <p className="note" style={{ margin: 0 }}>The script was rewritten: the rendered video shows the old version. Render this video again to match.</p>}
               <Tags list={v.hashtags} />
               {oneOpen === (v.id || i + 1) && (
                 <div className="onebox">
@@ -472,7 +486,7 @@ function Videos({ pack, jobId }) {
                 <button type="button" className="ghost" disabled={busyNow || oneBusy !== null} onClick={() => openOne(v.id || i + 1)} title="Renders only this video (about 500 ElevenLabs credits); you choose the voice first">
                   {busyNow && (render.st.only || []).includes(v.id || i + 1) ? <><Loader2 size={13} className="rot" /> Rendering…</> : <><Clapperboard size={13} /> {file ? 'Render this video again' : 'Render this video'}</>}
                 </button>
-              )}<CopyBtn text={v.spoken_script} label="Copy voiceover script" />{v.primary_text && <CopyBtn text={[v.primary_text, ...((v.hashtags || []).length ? ['', v.hashtags.join(' ')] : [])].join(String.fromCharCode(10))} label="Copy ad caption" />}{v.video_url && <a className="ghost" href={v.video_url} target="_blank" rel="noreferrer">Open video <ExternalLink size={13} /></a>}</div>
+              )}<RewriteBox kind="videos" item={v} pack={pack} jobId={jobId} onChanged={onChanged} compact /><CopyBtn text={v.spoken_script} label="Copy voiceover script" />{v.primary_text && <CopyBtn text={[v.primary_text, ...((v.hashtags || []).length ? ['', v.hashtags.join(' ')] : [])].join(String.fromCharCode(10))} label="Copy ad caption" />}{v.video_url && <a className="ghost" href={v.video_url} target="_blank" rel="noreferrer">Open video <ExternalLink size={13} /></a>}</div>
             </article>
           );
         })}

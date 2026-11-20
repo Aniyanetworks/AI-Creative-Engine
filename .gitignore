@@ -11,6 +11,7 @@ workflow/.webhook-path
 workflow/.drive-webhook-path
 workflow/.image-webhook-path
 workflow/.preview-webhook-path
+workflow/.write-webhook-path
 workflow/creative-engine.n8n.json
 
 # ---- Dependencies and build output ----

@@ -11,6 +11,11 @@ export function pricesFrom(pick) {
     claudeInPerMTok: n('PRICE_CLAUDE_INPUT_PER_MTOK', 3),
     claudeOutPerMTok: n('PRICE_CLAUDE_OUTPUT_PER_MTOK', 15),
     image: { low: n('PRICE_IMAGE_LOW', 0.01), medium: n('PRICE_IMAGE_MEDIUM', 0.04), high: n('PRICE_IMAGE_HIGH', 0.17) },
+    // Per-model rates [input, output] per million tokens. Families are matched by name; the numbers are ASSUMPTIONS, override
+    // exact ids with PRICE_CLAUDE_BY_MODEL='{"claude-opus-5-5":[15,75]}'.
+    claudeFamilies: { haiku: [1, 5], sonnet: [3, 15], opus: [15, 75] },
+    claudeByModel: (() => { try { return JSON.parse(pick('PRICE_CLAUDE_BY_MODEL') || '{}'); } catch { return {}; } })(),
+    imageMini: n('PRICE_IMAGE_MINI_MULTIPLIER', 0.35), // gpt-image-*-mini costs about a third of the full model
     videoCredits: n('ELEVENLABS_CREDITS_PER_VIDEO', 500),
     creditsPer1k: n('PRICE_ELEVENLABS_PER_1K_CREDITS', 0.2),
   };
@@ -20,9 +25,16 @@ const round = (x) => Math.round(x * 10000) / 10000;
 
 export function createUsage({ store, prices, profiles }) {
   const enabled = !!(store && store.usage);
+  const rateFor = (model) => {
+    const m = String(model || '').toLowerCase();
+    const exact = prices.claudeByModel && prices.claudeByModel[model];
+    if (Array.isArray(exact) && exact.length === 2) return exact;
+    for (const [fam, rate] of Object.entries(prices.claudeFamilies || {})) if (m.includes(fam)) return rate;
+    return [prices.claudeInPerMTok, prices.claudeOutPerMTok];
+  };
   const costOf = {
-    claude: (inTok, outTok) => round((inTok / 1e6) * prices.claudeInPerMTok + (outTok / 1e6) * prices.claudeOutPerMTok),
-    image: (count, quality) => round(count * (prices.image[quality] ?? prices.image.medium)),
+    claude: (inTok, outTok, model) => { const [i, o] = rateFor(model); return round((inTok / 1e6) * i + (outTok / 1e6) * o); },
+    image: (count, quality, model) => round(count * (prices.image[quality] ?? prices.image.medium) * (/mini/i.test(String(model || '')) ? prices.imageMini : 1)),
     video: (count) => round(count * (prices.videoCredits / 1000) * prices.creditsPer1k),
   };
   // Logging must never break the action it describes.
@@ -32,14 +44,18 @@ export function createUsage({ store, prices, profiles }) {
     enabled, prices, costOf,
 
     // A finished run: Claude tokens (from the execution's Claude nodes) and the images the workflow made. Once per run.
-    async recordRun(job, { inTok = 0, outTok = 0, calls = 0, images = 0, imageQuality = 'medium', model = '' }) {
+    async recordRun(job, { inTok = 0, outTok = 0, calls = 0, images = 0, imageQuality = 'medium', model = '', imageModel = '' }) {
       if (!enabled) return;
       try { if (await store.usage.has(job.id, 'claude')) return; } catch { return; }
-      await add({ userId: job.userId, runId: job.id, kind: 'claude', units: inTok + outTok, unitLabel: 'tokens', cost: costOf.claude(inTok, outTok), meta: { in: inTok, out: outTok, calls, model } });
-      if (images > 0) await add({ userId: job.userId, runId: job.id, kind: 'image', units: images, unitLabel: 'images', quality: imageQuality, cost: costOf.image(images, imageQuality), meta: { source: 'run' } });
+      await add({ userId: job.userId, runId: job.id, kind: 'claude', units: inTok + outTok, unitLabel: 'tokens', cost: costOf.claude(inTok, outTok, model), meta: { in: inTok, out: outTok, calls, model } });
+      if (images > 0) await add({ userId: job.userId, runId: job.id, kind: 'image', units: images, unitLabel: 'images', quality: imageQuality, cost: costOf.image(images, imageQuality, imageModel), meta: { source: 'run', model: imageModel } });
     },
     // userId = the person who clicked (falls back to the run's owner)
-    async recordImage(job, quality, userId) { return add({ userId: userId || job.userId, runId: job.id, kind: 'image', units: 1, unitLabel: 'images', quality, cost: costOf.image(1, quality), meta: { source: 'button' } }); },
+    // "Generate more" / "Rewrite": more Claude tokens on an existing run (charged to whoever clicked)
+    async recordWrite(job, { inTok = 0, outTok = 0, kind, op, count, model = '' }, userId) {
+      return add({ userId: userId || job.userId, runId: job.id, kind: 'claude', units: inTok + outTok, unitLabel: 'tokens', cost: costOf.claude(inTok, outTok, model), meta: { in: inTok, out: outTok, calls: 1, source: 'write', what: kind, op, count, model } });
+    },
+    async recordImage(job, quality, userId, model) { return add({ userId: userId || job.userId, runId: job.id, kind: 'image', units: 1, unitLabel: 'images', quality, cost: costOf.image(1, quality, model), meta: { source: 'button', model } }); },
     async recordVideos(job, count, by, userId) { return add({ userId: userId || job.userId, runId: job.id, kind: 'video', units: count, unitLabel: 'videos', cost: costOf.video(count), meta: { credits: Math.round(count * prices.videoCredits), by: by || 'user' } }); },
 
     // What one run cost so far: Claude tokens, images by quality, videos, and each event. Anyone who may open the run may see it.
