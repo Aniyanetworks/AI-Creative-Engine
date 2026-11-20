@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Download, Image as ImageIcon, Clapperboard, Sparkles, Wallet } from 'lucide-react';
 import { api } from '../api.js';
+import Hint from './Hint.jsx';
 import { Bone } from './Skeletons.jsx';
 
 const usd = (n) => '$' + (Number(n) || 0).toFixed((Number(n) || 0) >= 100 ? 0 : 2);
@@ -44,7 +45,7 @@ export default function Usage({ me }) {
     <div className="card usage">
       <div className="row between" style={{ flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h2 style={{ margin: 0 }}>Usage and cost</h2>
+          <h2 style={{ margin: 0 }}>Usage and cost <Hint id="usage.page" /></h2>
           <span className="muted small">{data.isAdmin ? (data.scope === 'all' ? 'All accounts' : 'One account') : 'Your account'} · estimates at list prices, not a bill</span>
         </div>
         <div className="row gap">

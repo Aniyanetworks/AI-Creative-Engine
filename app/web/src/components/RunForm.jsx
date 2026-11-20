@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Globe, ArrowRight, Loader2, FileText, Image as ImageIcon, Layers, ChevronRight, ScanSearch, Wand2, FolderOpen, AlertTriangle } from 'lucide-react';
 import { api } from '../api.js';
+import Hint from './Hint.jsx';
 import { useModels, loadChoice, saveChoice } from '../models.js';
 
 const TEST_SITES = ['aniyanetworks.net', 'answerandbook.ca', 'buildpartner.cc'];
@@ -62,7 +63,7 @@ export default function RunForm({ disabled, onStarted }) {
       {err && <div className="banner err" role="alert" style={{ marginTop: 14 }}><AlertTriangle size={16} />{err}</div>}
       {models && (
         <details className="aimodels">
-          <summary>AI models <span className="muted">· {(models.claude.find((x) => x.id === (claudeModel || models.defaults.claude)) || {}).label || claudeModel}</span></summary>
+          <summary>AI models <Hint id="run.models" /> <span className="muted">· {(models.claude.find((x) => x.id === (claudeModel || models.defaults.claude)) || {}).label || claudeModel}</span></summary>
           <div className="aimodels-grid">
             <label>Writing (brief, hooks, ads, scripts)
               <select value={claudeModel || models.defaults.claude} onChange={(e) => { const v = e.target.value === models.defaults.claude ? '' : e.target.value; setClaudeModel(v); saveChoice('ace-run-claude', v); }}>
@@ -79,6 +80,7 @@ export default function RunForm({ disabled, onStarted }) {
         </details>
       )}
 
+      <div className="row gap" style={{ justifyContent: 'center', margin: '18px 0 8px' }}><b className="small">How much to generate</b><Hint id="run.modes" /></div>
       <div className="modes" role="radiogroup" aria-label="How much to generate">
         {Object.entries(MODES).map(([k, m]) => {
           const Icon = m.icon;
@@ -100,7 +102,7 @@ export default function RunForm({ disabled, onStarted }) {
             <input id="bn" placeholder="Only if you want to override what we find" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
           </div>
           <div>
-            <label htmlFor="cn">Competitor ads or notes</label>
+            <label htmlFor="cn">Competitor ads or notes <Hint id="run.notes" /></label>
             <textarea id="cn" rows={4} placeholder="Paste ads you found in the Meta Ad Library (advertiser, hook, offer). Without this, the competitor analysis is marked as inferred." value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
         </div>

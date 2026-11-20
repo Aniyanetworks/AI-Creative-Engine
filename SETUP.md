@@ -231,3 +231,6 @@ Every post needs a confirmation, shows exactly what will happen first, and is re
 - The valid redirect address saved in Meta is `https://ans-creative-engine.netlify.app/api/meta/callback`. Meta enforces HTTPS, so `http://localhost` addresses are refused: test the connection on the Netlify site (or through an https tunnel).
 - `META_APP_SECRET` (App settings > Basic > App secret > Show) is not stored anywhere yet: Meta asks for your Facebook password before it shows it. Copy it into `.env` and into Netlify as a secret.
 - The app is unpublished (development mode): only people with a role on it (App roles) can connect. To let anyone connect, connect a business portfolio, then use App Review.
+
+### Hints and the Guide
+Small **?** buttons next to features explain them in place (hover, click, or tab to one and press Enter; Esc closes). They cover starting a run, the progress and cost chip, every tab, image and video tools, Generate more / Rewrite / hashtags, posting, connected accounts, usage and users. The sidebar **Guide** page walks through the whole workflow in eight short sections and has a **Show hints** switch (remembered per browser). The wording lives in `app/web/src/hints.js`; `node tools/check_hints.mjs` checks that every placed hint has text.

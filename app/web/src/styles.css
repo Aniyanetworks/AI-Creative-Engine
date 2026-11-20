@@ -433,3 +433,18 @@ select:hover { border-color: var(--muted); } select:focus-visible { outline: 2px
 .postrows li { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 10px; }
 .postrows li.ok { border-color: var(--ok); } .postrows li.fail { border-color: var(--bad); }
 .postrows .pr-n { flex: 1; min-width: 0; display: grid; } .postrows .pr-n small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+
+/* Hints and the Guide */
+.hintbtn { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; margin: 0 2px; border: 0; background: none; color: var(--muted); border-radius: 50%; cursor: help; vertical-align: middle; flex: none; }
+.hintbtn:hover, .hintbtn[aria-expanded="true"] { color: var(--accent); background: var(--accent-soft); }
+.hintpanel { position: fixed; z-index: 200; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; box-shadow: 0 12px 32px rgba(0,0,0,.22); font-size: 13px; line-height: 1.45; display: grid; gap: 4px; font-weight: 400; text-align: left; white-space: normal; }
+.hintpanel b { font-size: 13px; }
+.tabhint { margin-left: auto; display: inline-flex; align-items: center; padding-right: 6px; }
+.switch { display: inline-flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; font-weight: 600; }
+.switch input { width: 18px; height: 18px; accent-color: var(--accent); }
+.guide-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 18px; }
+.guide-card { margin: 0; }
+.guide-card h3 { display: flex; gap: 10px; align-items: center; margin: 0 0 10px; font-size: 16px; }
+.guide-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.guide-card li { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.45; color: var(--copy); }
+.guide-card li svg { margin-top: 4px; color: var(--ok); flex: none; }

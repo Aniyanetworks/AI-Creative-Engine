@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Facebook, Instagram, Link2, Loader2, RefreshCw, Unlink } from 'lucide-react';
 import { api } from '../api.js';
+import Hint from './Hint.jsx';
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '');
 
@@ -29,7 +30,7 @@ export default function ConnectedAccounts({ notice, isAdmin }) {
       <div className="row gap" style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
         <span className="tile"><Link2 size={18} /></span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <b style={{ display: 'block' }}>Connected accounts</b>
+          <b style={{ display: 'block' }}>Connected accounts <Hint id="account.connected" /></b>
           <span className="muted small">Connect Facebook to post your ads straight from here. Nothing is posted without your OK, and ads are always created paused.</span>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Sparkles, Plus, AlertTriangle, Power, Moon, Sun, Users as UsersIcon, Settings, LogOut, RefreshCw, Wallet } from 'lucide-react';
+import { Sparkles, Plus, AlertTriangle, Power, Moon, Sun, Users as UsersIcon, Settings, LogOut, RefreshCw, Wallet, BookOpen } from 'lucide-react';
 import { api, auth } from './api.js';
 import RunForm from './components/RunForm.jsx';
 import RunView from './components/RunView.jsx';
@@ -9,11 +9,13 @@ import Pending from './components/Pending.jsx';
 import Users from './components/Users.jsx';
 import Account from './components/Account.jsx';
 import Usage from './components/Usage.jsx';
+import Guide from './components/Guide.jsx';
 import { Bone } from './components/Skeletons.jsx';
 
 const USERS = '__users';
 const ACCOUNT = '__account';
 const USAGE = '__usage';
+const GUIDE = '__guide';
 
 function useTheme() {
   // Light is the default; dark is only used if the user switched it on (remembered in this browser).
@@ -79,7 +81,7 @@ function Main({ me, onSignOut }) {
 
   const wf = status && status.workflow;
   const ready = !!(status && status.n8n && wf && wf.active);
-  const special = activeId === USERS || activeId === ACCOUNT || activeId === USAGE;
+  const special = activeId === USERS || activeId === ACCOUNT || activeId === USAGE || activeId === GUIDE;
   const runId = special ? null : activeId;
 
   return (
@@ -94,6 +96,9 @@ function Main({ me, onSignOut }) {
               <span className="tile soft"><UsersIcon size={15} /></span> Users
             </button>
           )}
+          <button className={'themebtn' + (activeId === GUIDE ? ' on' : '')} onClick={() => setActiveId(GUIDE)}>
+            <span className="tile soft"><BookOpen size={15} /></span> Guide
+          </button>
           <button className={'themebtn' + (activeId === USAGE ? ' on' : '')} onClick={() => setActiveId(USAGE)}>
             <span className="tile soft"><Wallet size={15} /></span> Usage and cost
           </button>
@@ -131,6 +136,7 @@ function Main({ me, onSignOut }) {
 
         {activeId === USERS ? <Users myEmail={me.email} />
           : activeId === USAGE ? <Usage me={me} />
+          : activeId === GUIDE ? <Guide />
           : activeId === ACCOUNT ? <Account me={me} onSignOut={onSignOut} notice={metaNotice} />
           : activeId === null ? <RunForm disabled={!ready} onStarted={async (id) => { await refreshJobs(); setActiveId(id); }} />
           : <RunView key={activeId} id={activeId} onFinished={refreshJobs} onRerun={afterRerun} onGoAccount={() => setActiveId(ACCOUNT)} />}

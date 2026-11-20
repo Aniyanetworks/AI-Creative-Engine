@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Hash, Loader2, PenLine, Plus, X } from 'lucide-react';
 import { api } from '../api.js';
+import Hint from './Hint.jsx';
 import { useModels, loadChoice, saveChoice } from '../models.js';
 
 const NAMES = { hooks: ['hook', 'hooks'], statics: ['ad', 'ads'], videos: ['video script', 'video scripts'] };
@@ -54,7 +55,7 @@ export function MoreBar({ kind, pack, jobId, onChanged }) {
         <div className="banner err" role="alert"><AlertTriangle size={16} />{w.error}<button type="button" className="ghost" style={{ marginLeft: 'auto' }} onClick={dismiss}>Dismiss</button></div>
       )}
       {!open ? (
-        <button type="button" className="ghost" disabled={pending} onClick={() => setOpen(true)}><Plus size={13} /> Generate more {many}</button>
+        <><button type="button" className="ghost" disabled={pending} onClick={() => setOpen(true)}><Plus size={13} /> Generate more {many}</button><Hint id="write.more" /></>
       ) : (
         <div className="onebox">
           <div className="row between"><b className="small">Generate more {many}</b><button type="button" className="ghost" onClick={() => setOpen(false)} aria-label="Close"><X size={14} /></button></div>

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Wallet, X } from 'lucide-react';
 import { api } from '../api.js';
+import Hint from './Hint.jsx';
 
 const usd = (n) => '$' + (Number(n) || 0).toFixed(2);
 const num = (n) => (Number(n) || 0).toLocaleString('en-US');
@@ -30,6 +31,7 @@ export default function RunCost({ jobId, status, stamp }) {
       <button type="button" className="costchip" onClick={() => setOpen(!open)} aria-expanded={open} title="Estimated cost of this run so far">
         <Wallet size={13} /> {r.tracked ? 'Est. ' + usd(r.cost) : 'Cost not tracked'}
       </button>
+      <Hint id="run.cost" />
       {open && (
         <div className="costpop" style={{ position: 'absolute', right: 20, top: 74, zIndex: 5, width: 'min(380px, calc(100vw - 40px))', boxShadow: 'var(--shadow)' }} role="dialog" aria-label="Cost of this run">
           <div className="row between"><b>Cost of this run (estimate)</b><button type="button" className="ghost" onClick={() => setOpen(false)} aria-label="Close"><X size={14} /></button></div>

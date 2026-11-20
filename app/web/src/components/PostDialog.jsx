@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Facebook, Instagram, Loader2, Megaphone, ShieldCheck, X } from 'lucide-react';
 import { api } from '../api.js';
+import Hint from './Hint.jsx';
 
 const DESTS = [
   { key: 'ads', Icon: Megaphone, title: 'Meta ads (paused)', safe: true, blurb: 'Creates a paused campaign, ad set and ads in your ad account. Nothing runs or spends money until you turn it on in Meta.' },
@@ -92,13 +93,13 @@ export default function PostDialog({ jobId, pack, ads, defaultLink, onClose, onD
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-label="Post ads">
       <div className="modal-card">
-        <div className="row between"><h2 style={{ margin: 0, fontSize: 18 }}>Post {ads.length} ad{ads.length === 1 ? '' : 's'}</h2><button className="ghost" onClick={onClose} aria-label="Close" disabled={phase === 'running'}><X size={14} /></button></div>
+        <div className="row between"><h2 style={{ margin: 0, fontSize: 18 }}>Post {ads.length} ad{ads.length === 1 ? '' : 's'} <Hint id="post.where" /></h2><button className="ghost" onClick={onClose} aria-label="Close" disabled={phase === 'running'}><X size={14} /></button></div>
 
         {!meta && !err && <p className="muted"><Loader2 size={14} className="rot" /> Loading your accounts…</p>}
         {err && <div className="banner err"><AlertTriangle size={16} />{err}</div>}
         {meta && !meta.connected && (
           <div className="banner warn" style={{ display: 'block' }}>
-            <b>Connect your Facebook account first.</b>
+            <b>Connect your Facebook account first. <Hint id="post.connect" /></b>
             <p className="small" style={{ margin: '6px 0 8px' }}>{meta.configured ? 'It takes a minute: you sign in at Facebook and choose the Pages and ad accounts to use.' : 'Posting is not switched on yet. Ask the app admin to turn it on.'}</p>
             {meta.configured && <button className="btn sm" onClick={() => { onClose(); goAccount && goAccount(); }}>Connect Facebook</button>}
           </div>
@@ -124,10 +125,10 @@ export default function PostDialog({ jobId, pack, ads, defaultLink, onClose, onD
                   </select>
                 </label>
               )}
-              {dest !== 'instagram' && <label>Website link<input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://" /><small>Tracking tags (utm) are added automatically.</small></label>}
+              {dest !== 'instagram' && <label>Website link <Hint id="post.link" /><input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://" /><small>Tracking tags (utm) are added automatically.</small></label>}
               {dest === 'facebook' && (
                 <>
-                  <label>When
+                  <label>When <Hint id="post.when" />
                     <select value={mode} onChange={(e) => { setMode(e.target.value); setAck(false); }}>
                       <option value="draft">Save as a draft (recommended)</option>
                       <option value="schedule">Schedule it</option>
@@ -141,7 +142,7 @@ export default function PostDialog({ jobId, pack, ads, defaultLink, onClose, onD
               {dest === 'ads' && (
                 <>
                   <label>Ad account<select value={acct} onChange={(e) => setAcct(e.target.value)}>{(meta.adAccounts || []).length === 0 && <option value="">No ad accounts found</option>}{(meta.adAccounts || []).map((a) => <option key={a.id} value={a.id}>{a.name} · {a.currency}</option>)}</select></label>
-                  <label>Daily budget<input type="number" min="1" max="500" step="1" value={budget} onChange={(e) => setBudget(e.target.value)} /><small>In the account's currency. Only used once you switch the campaign on.</small></label>
+                  <label>Daily budget <Hint id="post.ads" /><input type="number" min="1" max="500" step="1" value={budget} onChange={(e) => setBudget(e.target.value)} /><small>In the account's currency. Only used once you switch the campaign on.</small></label>
                   <label>Countries<input value={countries} onChange={(e) => setCountries(e.target.value)} placeholder="CA, US" /><small>Two-letter codes.</small></label>
                   <label>Ages<span className="row gap"><input style={{ width: 70 }} type="number" min="13" max="65" value={ageMin} onChange={(e) => setAgeMin(e.target.value)} /> to <input style={{ width: 70 }} type="number" min="13" max="65" value={ageMax} onChange={(e) => setAgeMax(e.target.value)} /></span></label>
                 </>

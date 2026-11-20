@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Globe, FileText, ScanSearch, Lightbulb, Image as ImageIcon, Clapperboard, Video, Package, Check, Loader2, AlertTriangle, Minus, Clock } from 'lucide-react';
 import { api } from '../api.js';
 import RunCost from './RunCost.jsx';
+import Hint from './Hint.jsx';
 import Results from './Results.jsx';
 import RerunButton from './RerunButton.jsx';
 import { RunSkeleton } from './Skeletons.jsx';
@@ -90,12 +91,12 @@ export default function RunView({ id, onFinished, onRerun, onGoAccount }) {
             {job.status === 'success' ? 'Finished' : job.status === 'error' ? 'Failed' : 'Running · ' + mmss(elapsed)}
           </span>
             <RunCost jobId={job.id} status={job.status} stamp={JSON.stringify((job.result && job.result.stats) || {}) + (job.result && (job.result.statics || []).map((x) => x.image_url || '').join('').length)} />
-            {job.status !== 'running' && job.status !== 'queued' && onRerun ? <RerunButton job={job} onStarted={onRerun} primary={job.status === 'error'} /> : null}
+            {job.status !== 'running' && job.status !== 'queued' && onRerun ? <><RerunButton job={job} onStarted={onRerun} primary={job.status === 'error'} /><Hint id="run.again" /></> : null}
           </div>
         </div>
 
         <div className={'bar' + (job.status === 'success' ? ' done' : job.status === 'error' ? ' fail' : '')} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: pct + '%' }} /></div>
-        <div className="barmeta"><span>{finished} of {job.stages.length} steps</span><span>{pct}%</span></div>
+        <div className="barmeta"><span>{finished} of {job.stages.length} steps <Hint id="run.steps" /></span><span>{pct}%</span></div>
 
         {running && <div className="now"><Loader2 size={16} className="rot" /> {active ? DOING[active.key] : 'Starting up…'}</div>}
         {job.status === 'error' && (

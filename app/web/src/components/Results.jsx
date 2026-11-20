@@ -4,6 +4,7 @@ import { MoreBar, RewriteBox, TagButton } from './WriteTools.jsx';
 import ImageSettings, { QUALITIES } from './ImageSettings.jsx';
 import RunUsageTab from './RunUsageTab.jsx';
 import PostDialog from './PostDialog.jsx';
+import Hint from './Hint.jsx';
 import { useModels, loadChoice, saveChoice } from '../models.js';
 import { Send, Wallet, Facebook, Instagram, Youtube, Music2, Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
 
@@ -37,7 +38,7 @@ function Hooks({ pack, jobId, onChanged }) {
   const all = (pack.hooks || []).map((h) => h.id + '. ' + h.hook).join('\n');
   return (
     <>
-      <div className="toolbar"><span className="muted small">{(pack.hooks || []).length} hooks across different angles</span><CopyBtn text={all} label="Copy all hooks" /></div>
+      <div className="toolbar"><span className="muted small">{(pack.hooks || []).length} hooks across different angles</span><CopyBtn text={all} label="Copy all hooks" /><Hint id="write.rewrite" /></div>
       <MoreBar kind="hooks" pack={pack} jobId={jobId} onChanged={onChanged} />
       <div className="hooklist">
         {(pack.hooks || []).map((h) => (
@@ -57,7 +58,7 @@ const isRendering = (s) => /^rendering:/.test((s && s.image_status) || '');
 const isFailed = (s) => /^failed/.test((s && s.image_status) || '');
 
 // One ad, laid out like the real thing: page header, caption, picture, headline and button.
-function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake, imgSettings, selected, onSelect }) {
+function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake, imgSettings, selected, onSelect, first }) {
   const [more, setMore] = useState(false);
   const [refine, setRefine] = useState(false);
   const [note, setNote] = useState('');
@@ -96,7 +97,7 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake, i
         <div className="ad-who"><b>{brand.name}</b><span>Sponsored · #{s.id} · {s.aspect} · {s.style}</span></div>
         {onSelect && <label className="pick" title="Select this ad to post it"><input type="checkbox" checked={!!selected} onChange={() => onSelect(s.id)} aria-label={'Select ad ' + s.id} /></label>}
       </div>
-      <PlatformBadges aspect={s.aspect} />
+      <PlatformBadges aspect={s.aspect} hint={first} />
       <PostedChips posts={(pack.posts || {})[s.id]} />
       <div className="ad-cap">
         <p className={'pre' + (more ? '' : ' clamp3')}>{s.primary_text}</p>
@@ -135,6 +136,7 @@ function StaticCard({ s, brand, pack, onChanged, jobId, busy, onMake, canMake, i
         )}
         {s.image_url && <a className="ghost" href={s.image_url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Open in Drive</a>}
         <CopyBtn text={text} label="Copy ad" />
+        {first && <Hint id="card.actions" />}
         <RewriteBox kind="statics" item={s} pack={pack} jobId={jobId} onChanged={onChanged} compact />
       </div>
       {refine && (
@@ -222,15 +224,17 @@ function Statics({ pack, jobId, onChanged, goAccount, defaultLink }) {
               <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>
             ))}
           </div>
+          <Hint id="static.filters" />
         </div>
         <div className="makepanel">
           <div className="mp-progress" title="Concept previews show the overlay text in your brand color; made images are saved in your Google Drive folder.">
             <div className="mp-bar" role="progressbar" aria-valuemin={0} aria-valuemax={all.length} aria-valuenow={doneN}><i style={{ width: (all.length ? Math.round((doneN / all.length) * 100) : 0) + '%' }} /></div>
-            <span><b>{doneN}</b> of {all.length} images made</span>
+            <span><b>{doneN}</b> of {all.length} images made</span><Hint id="static.progress" />
           </div>
           {canMake && (
             <div className="mp-actions">
               <ImageSettings quality={quality} onQuality={pickQuality} model={imgModel} onModel={pickModel} models={models} />
+              <Hint id="static.settings" />
               {missing.length > 0 && (confirmBulk ? (
                 <>
                   <button className="btn sm" onClick={makeAllMissing} disabled={bulk}>Make {missing.length} images · about ${(missing.length * each).toFixed(2)}</button>
@@ -241,8 +245,11 @@ function Statics({ pack, jobId, onChanged, goAccount, defaultLink }) {
                   {bulk ? <><Loader2 size={13} className="rot" /> Starting…</> : <><ImageIcon size={13} /> Generate {missing.length} missing</>}
                 </button>
               ))}
+              {missing.length > 0 && <Hint id="static.missing" />}
+              {withImg.length > 0 && <Hint id="static.select" />}
               {withImg.length > 0 && <button type="button" className="ghost" onClick={() => setSel(sel.size ? new Set() : new Set(withImg.map((x) => x.id)))}>{sel.size ? 'Clear selection' : 'Select ' + withImg.length + ' with images'}</button>}
               <TagButton kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} compact />
+              {all.some((x) => !(x.hashtags || []).length) && <Hint id="static.tags" />}
               <MoreBar kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} />
             </div>
           )}
@@ -251,8 +258,8 @@ function Statics({ pack, jobId, onChanged, goAccount, defaultLink }) {
       {startErr && <div className="banner err"><AlertTriangle size={16} />{startErr}</div>}
       {list.length === 0 && <p className="muted" style={{ padding: '24px 0' }}>No ads match these filters.</p>}
       <div className="cards ads">
-        {list.map((s) => (
-          <StaticCard key={s.id} s={s} selected={sel.has(s.id)} onSelect={canMake ? toggleSel : null} brand={brand} imgSettings={{ quality, onQuality: pickQuality, model: imgModel, onModel: pickModel, models }} pack={pack} onChanged={onChanged} jobId={jobId} canMake={canMake} onMake={makeImage} busy={isRendering(s) || starting.has(s.id)} />
+        {list.map((s, i) => (
+          <StaticCard first={i === 0} key={s.id} s={s} selected={sel.has(s.id)} onSelect={canMake ? toggleSel : null} brand={brand} imgSettings={{ quality, onQuality: pickQuality, model: imgModel, onModel: pickModel, models }} pack={pack} onChanged={onChanged} jobId={jobId} canMake={canMake} onMake={makeImage} busy={isRendering(s) || starting.has(s.id)} />
         ))}
       </div>
       {sel.size > 0 && (
@@ -290,6 +297,7 @@ function PostedChips({ posts }) {
   if (!list.length) return null;
   return (
     <div className="platforms" style={{ paddingTop: 0 }} aria-label="Already posted">
+      <Hint id="card.posted" />
       {list.map((x) => <span key={x.dest} className="postedchip" title={(x.page || '') + ' · ' + new Date(x.at).toLocaleString()}><CheckCircle2 size={12} aria-hidden /> {POST_LABEL[x.dest] || x.dest}</span>)}
     </div>
   );
@@ -316,7 +324,7 @@ const PLATFORMS = {
 };
 
 // Small badges that say which platforms and placements an ad can be used on.
-function PlatformBadges({ aspect, video }) {
+function PlatformBadges({ aspect, video, hint }) {
   const list = PLATFORMS[video ? 'video' : aspect] || [];
   if (!list.length) return null;
   return (
@@ -328,6 +336,7 @@ function PlatformBadges({ aspect, video }) {
       {list.map(({ key, name, where, Icon, tip }) => (
         <span key={key} className={'plat ' + key} title={tip} role="img" aria-label={name + ' ' + where}><Icon size={15} aria-hidden /></span>
       ))}
+      {hint && <Hint id="card.platforms" />}
     </div>
   );
 }
@@ -363,7 +372,7 @@ function VoicePicker({ value, onChange }) {
   const cur = voices.find((v) => v.id === value);
   return (
     <div className="voicepick">
-      <label className="small muted" htmlFor="voice">Voiceover voice</label>
+      <label className="small muted" htmlFor="voice">Voiceover voice <Hint id="video.voice" /></label>
       <div className="row gap">
         <select id="voice" value={known ? value : '__custom'} onChange={(e) => { const c = e.target.value === '__custom'; setCustom(c); onChange(c ? '' : e.target.value); }}>
           <option value="">Default voice</option>
@@ -441,7 +450,7 @@ function RenderPanel({ jobId, render, ids, selected }) {
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           {st.status === 'idle' && (<>
-            <b style={{ display: 'block' }}>Render these videos online</b>
+            <b style={{ display: 'block' }}>Render these videos online <Hint id="video.render" /></b>
             <span className="muted small">GitHub renders {what} with an ElevenLabs voiceover and brand-colored captions, in about 5 to 8 minutes. It uses roughly {credits} ElevenLabs credits. Nothing runs on your computer. {ids.length > 1 ? 'Tick the videos you want on the cards below.' : ''}</span>
             <VoicePicker value={voice} onChange={pickVoice} />
           </>)}
@@ -474,6 +483,7 @@ function RenderPanel({ jobId, render, ids, selected }) {
           {!working && st.videos.length > 0 && st.videos.some((v) => !v.driveUrl) && (
             <div className="row gap" style={{ marginTop: 8 }}>
               <button className="ghost" onClick={toDrive} disabled={driveBusy}>{driveBusy ? <Loader2 size={14} className="rot" /> : <CloudUpload size={14} />} Save to Google Drive</button>
+              <Hint id="video.drive" />
               <span className="note">Copies the finished videos to Drive. No credits used.</span>
             </div>
           )}
@@ -527,7 +537,7 @@ function Videos({ pack, jobId, onChanged }) {
               <PlatformBadges video />
               <div className="row between"><span className="tag" style={{ margin: 0 }}>{v.format}</span>
                 {hasBoards && ids.includes(v.id || i + 1) && ids.length > 1 && render.st && render.st.configured && (
-                  <label className="pickvid"><input type="checkbox" checked={selected.includes(v.id || i + 1)} disabled={busyNow} onChange={() => toggle(v.id || i + 1)} /> Render</label>
+                  <><label className="pickvid"><input type="checkbox" checked={selected.includes(v.id || i + 1)} disabled={busyNow} onChange={() => toggle(v.id || i + 1)} /> Render</label>{i === 0 && <Hint id="video.pick" />}</>
                 )}
                 <span className={'pill small ' + (file || v.video_url ? 'ok' : '')}>{file || v.video_url ? 'Rendered' : /failed|timed out/.test(v.video_status || '') ? v.video_status : (v.scenes || []).length ? 'Storyboard ready' : v.video_status}</span></div>
               <h2 style={{ fontSize: 16 }}>{v.title}</h2>
@@ -658,6 +668,7 @@ export default function Results({ pack, jobId, onChanged, goAccount, defaultLink
               {React.createElement(TAB_ICON[t], { size: 15 })}{t}{counts[t] !== undefined && <span className="n">{counts[t]}</span>}
             </button>
           ))}
+          <span className="tabhint"><Hint id={'tab.' + tab} /></span>
         </div>
         <Body pack={pack} jobId={jobId} onChanged={onChanged} goAccount={goAccount} defaultLink={defaultLink} />
       </section>
