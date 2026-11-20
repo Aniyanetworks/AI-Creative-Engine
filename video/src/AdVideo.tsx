@@ -2,7 +2,8 @@
 import React, { useMemo } from 'react';
 import { AbsoluteFill, Audio, Sequence, staticFile, useVideoConfig } from 'remotion';
 import { Brand, ThemeProvider, makeTheme } from './theme';
-import { BgMesh, Grade, Grain, Vignette } from './components/Layers';
+import { Grade, Grain, Vignette } from './components/Layers';
+import { Backdrop } from './components/Backdrop';
 import { Captions, Word } from './components/Captions';
 import { SceneView, SceneData } from './scenes/SceneView';
 
@@ -25,7 +26,7 @@ export const AdVideo: React.FC<VideoProps> = ({ brand, cta, scenes, words, audio
   return (
     <ThemeProvider value={theme}>
       <AbsoluteFill style={{ background: theme.colors.bg, fontFamily: theme.fonts.body, overflow: 'hidden' }}>
-        <BgMesh />
+        <Backdrop scenes={scenes} />
 
         {scenes.map((sc, i) => {
           const from = frames(sc.startSec);

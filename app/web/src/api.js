@@ -78,6 +78,7 @@ export const api = {
   postInstagram: (id, body) => call('/jobs/' + id + '/post/instagram', { method: 'POST', body }),
   adsSetup: (id, body) => call('/jobs/' + id + '/post/ads/setup', { method: 'POST', body }),
   adsAd: (id, body) => call('/jobs/' + id + '/post/ads/ad', { method: 'POST', body }),
+  setBrandColors: (id, colors) => call('/jobs/' + id + '/brand-colors', { method: 'POST', body: { colors } }),
   getModels: () => call('/models'),
   writeMore: (id, body) => call('/jobs/' + id + '/write', { method: 'POST', body }),
   researchArea: (id, area, keywords) => call('/jobs/' + id + '/write', { method: 'POST', body: { op: 'research', area, keywords } }),

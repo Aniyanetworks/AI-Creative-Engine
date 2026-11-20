@@ -5,6 +5,7 @@
 //   resolve() later checks whether the image file has appeared in the Drive folder (the workflow keeps no execution data for
 //             successful runs, because it would hold the whole image), and reads the execution's status for failures
 import { cleanName, runFolderName } from './drive.js';
+import { validColors } from './brand.js';
 
 const TIMEOUT_MS = 8 * 60 * 1000;
 const errorStates = ['error', 'crashed', 'canceled'];
@@ -38,7 +39,10 @@ export function createImages({ hookUrl, driveHookUrl, n8nApi, workflowName = 'AC
 
       const q = ['low', 'medium', 'high'].includes(opts.quality) ? opts.quality : quality;
       const note = String(opts.note || '').replace(/ +/g, ' ').trim().slice(0, 300);
-      const prompt = String(s.image_prompt).trim() + (note ? ' IMPORTANT adjustments requested by the user, apply these: ' + note : '');
+      const custom = validColors(result.brand_colors_override);
+      const prompt = String(s.image_prompt).trim()
+        + (custom.length ? ' Use this exact brand colour palette: ' + custom.join(', ') + ' (primary first).' : '')
+        + (note ? ' IMPORTANT adjustments requested by the user, apply these: ' + note : '');
       const slug = businessOf(result).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'business';
       const fileName = slug + '_static_' + s.id + '.png';
       let started;

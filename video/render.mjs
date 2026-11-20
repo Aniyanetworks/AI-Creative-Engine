@@ -9,7 +9,7 @@
 //           --stills 20,90 also save PNG stills at these frames (to inspect the design)
 //           --require-voice  fail instead of rendering silent videos when ELEVENLABS_API_KEY is missing (used in the cloud)
 //           --stills-only  with --stills: skip rendering the video (fast design check)
-//           --out <dir>    output folder (default video/out/<run>)      --crf 18   quality (lower = better)
+//           --out <dir>    output folder (default video/out/<run>)      --crf 16   quality (lower = better; default 16, raised automatically if a file would be too big)
 //
 // Voiceover: ElevenLabs. Put ELEVENLABS_API_KEY (and optionally ELEVENLABS_VOICE_ID) in ../.env.
 import fs from 'fs';
@@ -94,7 +94,9 @@ if (!videos.length) throw new Error('This run has no video storyboards. Re-run t
 const only = opt('only') ? opt('only').split(',').map((x) => parseInt(x, 10)) : null;
 const todo = videos.filter((v) => !only || only.includes(v.n));
 const brief = pack.brief || {};
-const brand = { name: pack.business || brief.business_name || 'Your brand', colors: brief.brand_colors || [] };
+// Colours the person chose in the app (Brief tab) win over the ones detected on the website.
+const custom = Array.isArray(pack.brand_colors_override) ? pack.brand_colors_override.filter((c) => /^#[0-9a-f]{6}$/i.test(c)) : [];
+const brand = { name: pack.business || brief.business_name || 'Your brand', colors: custom.length ? custom : (brief.brand_colors || []) };
 
 if (flag('require-voice') && !pick('ELEVENLABS_API_KEY')) throw new Error('ELEVENLABS_API_KEY is missing, so the videos would have no voiceover. Add it (for cloud renders: GitHub repository secret ELEVENLABS_API_KEY).');
 const wantVoice = !flag('no-voice') && !flag('demo') && !!pick('ELEVENLABS_API_KEY');
@@ -141,10 +143,20 @@ for (const { v, audioFile, tl } of jobs) {
   if (flag('stills-only')) { results.push(...stills.map((f) => `${base}-frame${f}.png`)); continue; }
   const outputLocation = path.join(outDir, base + '.mp4');
   process.stdout.write(`Rendering video ${v.n} (${tl.durationSec.toFixed(1)}s)  0%`);
-  await renderMedia({
-    composition, serveUrl, inputProps, outputLocation, codec: 'h264', crf: parseInt(opt('crf') || '18', 10), overwrite: true,
-    onProgress: ({ progress }) => process.stdout.write(`\rRendering video ${v.n} (${tl.durationSec.toFixed(1)}s)  ${(progress * 100).toFixed(0)}%`),
-  });
+  // High quality: slow x264 preset, sharp frames (JPEG quality 95 instead of the default 80, which softens text edges), BT.709 colour
+  // and a clean audio bitrate. Supabase's free plan refuses files over 50 MB, so if a video comes out over 45 MB it is encoded again
+  // a little smaller (rare: a 35 second ad is normally 15 to 25 MB).
+  const MAX_MB = 45;
+  let crf = parseInt(opt('crf') || '16', 10);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await renderMedia({
+      composition, serveUrl, inputProps, outputLocation, codec: 'h264', crf, overwrite: true,
+      x264Preset: 'slow', jpegQuality: 95, pixelFormat: 'yuv420p', colorSpace: 'bt709', audioBitrate: '192k',
+      onProgress: ({ progress }) => process.stdout.write(`\rRendering video ${v.n} (${tl.durationSec.toFixed(1)}s)  ${(progress * 100).toFixed(0)}%`),
+    });
+    if (fs.statSync(outputLocation).size / 1048576 <= MAX_MB || opt('crf')) break;
+    crf += 3; log(`\r${' '.repeat(60)}\rVideo ${v.n} is over ${MAX_MB} MB: encoding again at crf ${crf}`);
+  }
   const mb = (fs.statSync(outputLocation).size / 1048576).toFixed(1);
   log(`\r${' '.repeat(60)}\rVideo ${v.n}: ${outputLocation} (${tl.durationSec.toFixed(1)}s, ${mb} MB${audioFile ? ', with voiceover' : ', silent'})`);
   results.push(outputLocation);

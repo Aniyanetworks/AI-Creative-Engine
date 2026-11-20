@@ -19,6 +19,7 @@ import { createImages } from './images.js';
 import { createWriter } from './writer.js';
 import { createModels } from './models.js';
 import { createSecrets } from './secrets.js';
+import { validColors, effectiveColors } from './brand.js';
 import { createMeta, captionFor, withUtm } from './meta.js';
 import { createUsage, pricesFrom, claudeUsageFromRunData } from './usage.js';
 
@@ -462,6 +463,24 @@ app.get('/api/jobs/:id/statics/:n/preview', authenticate, approved, async (req, 
     if (!r.ok || !j) return res.json({ ready: false, reason: 'n8n-error' });
     if (j.ready && j.url) previewCache.set(m[1], { url: j.url, at: Date.now() });
     res.json({ ready: !!(j.ready && j.url), url: j.url || null });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// Choose the brand colours for this run, or reset to the ones detected on the website (colors: null).
+app.post('/api/jobs/:id/brand-colors', authenticate, approved, async (req, res) => {
+  try {
+    const job = await store.get(req.params.id);
+    if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
+    if (job.status !== 'success' || !job.result) return res.status(409).json({ error: 'Wait until the run has finished.' });
+    const raw = req.body && req.body.colors;
+    if (raw === null) delete job.result.brand_colors_override;
+    else {
+      const colors = validColors(raw);
+      if (!colors.length || (Array.isArray(raw) && raw.length > 4)) return res.status(400).json({ error: 'Choose 1 to 4 colours (like #1a73e8).' });
+      job.result.brand_colors_override = colors;
+    }
+    await store.update(job.id, { result: job.result });
+    res.json({ ok: true, colors: effectiveColors(job.result), custom: !!job.result.brand_colors_override });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 

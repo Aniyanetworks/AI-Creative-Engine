@@ -7,6 +7,7 @@ import PostDialog from './PostDialog.jsx';
 import Hint from './Hint.jsx';
 import CompetitorsTab from './CompetitorsTab.jsx';
 import ReportTab from './ReportTab.jsx';
+import BriefTab from './BriefTab.jsx';
 import { useModels, loadChoice, saveChoice } from '../models.js';
 import { Send, Wallet, Facebook, Instagram, Youtube, Music2, Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
 
@@ -239,7 +240,7 @@ function Statics({ pack, jobId, onChanged, goAccount, defaultLink }) {
     setBulk(false);
   };
 
-  const colors = ((pack.brief && pack.brief.brand_colors) || []).filter(hexOk);
+  const colors = (pack.brand_colors_override && pack.brand_colors_override.length ? pack.brand_colors_override : ((pack.brief && pack.brief.brand_colors) || [])).filter(hexOk);
   const base = colors[0] || '#4338ca';
   const brand = { base, accent: colors[1] || null, fg: luminance(base) > 0.5 ? '#14110f' : '#ffffff', name: (pack.brief && pack.brief.business_name) || pack.business || 'Your brand' };
   const kind = (s) => (s.image_url ? 'done' : isFailed(s) ? 'failed' : 'concept');
@@ -623,29 +624,8 @@ function Videos({ pack, jobId, onChanged }) {
   );
 }
 
-function Brief({ pack }) {
-  const b = pack.brief || {};
-  return (
-    <div className="grid2">
-      <div>
-        <h3>Brand brief</h3>
-        <dl className="kv">
-          <dt>What they do</dt><dd>{b.one_liner}</dd>
-          <dt>Offer</dt><dd>{b.offer || 'Not stated'}</dd>
-          <dt>Audience</dt><dd>{(b.audience || []).join('; ')}</dd>
-          <dt>Proof on site</dt><dd>{(b.proof || []).join('; ') || 'None found'}</dd>
-          <dt>Tone</dt><dd>{b.tone}</dd>
-          <dt>Colors</dt><dd>{(b.brand_colors || []).length ? <span className="swatches">{b.brand_colors.map((c) => <span key={c} className="sw" style={{ background: c }}><i>{c}</i></span>)}</span> : 'None detected'}</dd>
-        </dl>
-      </div>
-      <div>
-        <h3>Verify with the client before running ads</h3>
-        <List items={b.claims_to_verify} />
-        <h3>Pain points we wrote to</h3>
-        <List items={b.pain_points} />
-      </div>
-    </div>
-  );
+function Brief({ pack, jobId, onChanged }) {
+  return <BriefTab pack={pack} jobId={jobId} onChanged={onChanged} />;
 }
 
 function Competitors({ pack, jobId, onChanged }) {
