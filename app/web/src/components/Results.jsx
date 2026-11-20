@@ -281,7 +281,7 @@ function PlatformBadges({ aspect, video }) {
   return (
     <div className="platforms" aria-label="Where this can run">
       {list.map(({ key, name, where, Icon, tip }) => (
-        <span key={key} className={'plat ' + key} title={tip}><Icon size={12} aria-hidden /> {name} <i>{where}</i></span>
+        <span key={key} className={'plat ' + key} title={tip} role="img" aria-label={name + ' ' + where}><Icon size={15} aria-hidden /></span>
       ))}
     </div>
   );
