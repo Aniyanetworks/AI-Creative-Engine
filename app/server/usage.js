@@ -72,7 +72,7 @@ export function createUsage({ store, prices, profiles }) {
         claude: { cost: sum(of('claude')), inTokens: (claude && claude.meta && claude.meta.in) || 0, outTokens: (claude && claude.meta && claude.meta.out) || 0, calls: (claude && claude.meta && claude.meta.calls) || 0 },
         images: { cost: sum(of('image')), count: of('image').reduce((a, e) => a + e.units, 0), byQuality: imgQ },
         videos: { cost: sum(of('video')), count: of('video').reduce((a, e) => a + e.units, 0), credits: of('video').reduce((a, e) => a + ((e.meta && e.meta.credits) || 0), 0) },
-        events: events.map((e) => ({ kind: e.kind, units: e.units, unitLabel: e.unitLabel, quality: e.quality, cost: e.cost, at: e.at })),
+        events: events.map((e) => ({ kind: e.kind, units: e.units, unitLabel: e.unitLabel, quality: e.quality, cost: e.cost, at: e.at, source: e.meta && e.meta.source, what: e.meta && e.meta.what, op: e.meta && e.meta.op, count: e.meta && e.meta.count, credits: e.meta && e.meta.credits, model: e.meta && e.meta.model })),
         prices,
       };
     },

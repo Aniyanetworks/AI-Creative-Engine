@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { MoreBar, RewriteBox, TagButton } from './WriteTools.jsx';
 import ImageSettings, { QUALITIES } from './ImageSettings.jsx';
+import RunUsageTab from './RunUsageTab.jsx';
 import { useModels, loadChoice, saveChoice } from '../models.js';
-import { Facebook, Instagram, Youtube, Music2, Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
+import { Wallet, Facebook, Instagram, Youtube, Music2, Lightbulb, Image as ImageIcon, Video, FileText, Swords, ClipboardList, Copy, Check, ExternalLink, Download, FolderOpen, AlertTriangle, LayoutGrid, Smartphone, Square, Clapperboard, Loader2, CheckCircle2, CloudUpload } from 'lucide-react';
 
-const TABS = ['Hooks', 'Static ads', 'Videos', 'Brief', 'Competitors', 'Report'];
-const TAB_ICON = { Hooks: Lightbulb, 'Static ads': ImageIcon, Videos: Video, Brief: FileText, Competitors: Swords, Report: ClipboardList };
+const TABS = ['Hooks', 'Static ads', 'Videos', 'Brief', 'Competitors', 'Report', 'Usage'];
+const TAB_ICON = { Hooks: Lightbulb, 'Static ads': ImageIcon, Videos: Video, Brief: FileText, Competitors: Swords, Report: ClipboardList, Usage: Wallet };
 
 function CopyBtn({ text, label = 'Copy' }) {
   const [ok, setOk] = useState(false);
@@ -594,7 +595,7 @@ function Report({ pack }) {
 export default function Results({ pack, jobId, onChanged }) {
   const [tab, setTab] = useState('Hooks');
   const st = pack.stats || {};
-  const Body = { Hooks, 'Static ads': Statics, Videos, Brief, Competitors, Report }[tab];
+  const Body = { Hooks, 'Static ads': Statics, Videos, Brief, Competitors, Report, Usage: RunUsageTab }[tab];
   const counts = useMemo(() => ({ Hooks: (pack.hooks || []).length, 'Static ads': (pack.statics || []).length, Videos: (pack.videos || []).length }), [pack]);
   return (
     <>
