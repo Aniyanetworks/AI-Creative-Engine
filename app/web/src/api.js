@@ -70,6 +70,7 @@ export const api = {
   renderVideos: (id, voiceId, only) => call('/jobs/' + id + '/render-videos', { method: 'POST', body: { voiceId: voiceId || '', only: only || [] } }),
   renderStatic: (id, n, opts) => call('/jobs/' + id + '/statics/' + n + '/image', { method: 'POST', body: opts || {} }),
   saveToDrive: (id) => call('/jobs/' + id + '/save-to-drive', { method: 'POST' }),
+  getUsage: (range, user) => call('/usage?range=' + encodeURIComponent(range || 'month') + (user && user !== 'all' ? '&user=' + encodeURIComponent(user) : '')),
   getVoices: () => call('/voices'),
   rerunJob: (id, body) => call('/jobs/' + id + '/rerun', { method: 'POST', body: body || {} }),
   listUsers: () => call('/admin/users'),

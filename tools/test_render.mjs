@@ -16,6 +16,7 @@ const BUCKET = 'ace-videos';
 const objects = new Map(); // "<path>" -> { body: Buffer, contentType }
 const runs = new Map();    // id -> { result, status }
 const github = { calls: [], fail: 0 };
+const usageRows = [];
 const n8n = { calls: [], folderCalls: [], fail: false, folderFail: false, nothingToDelete: false };
 let bucketCreated = false;
 
@@ -50,6 +51,12 @@ const server = http.createServer((req, res) => {
       n8n.calls.push({ name, folderId, bytes: body.length, hasFile: /name="file"; filename="[^"]+"/.test(text) });
       if (n8n.fail) return send(500, { message: 'Workflow error' });
       return send(200, { id: 'DRV' + n8n.calls.length, url: 'https://drive.google.com/file/d/DRV' + n8n.calls.length + '/view' });
+    }
+    // PostgREST: usage events
+    if (p === '/rest/v1/ace_usage') {
+      if (req.method === 'POST') { usageRows.push({ id: usageRows.length + 1, created_at: new Date().toISOString(), ...JSON.parse(body.toString()) }); return send(201); }
+      const f = (k) => { const v = u.searchParams.get(k); return v ? v.replace(/^(eq|gte)[.]/, '') : null; };
+      return send(200, usageRows.filter((r) => (!f('run_id') || r.run_id === f('run_id')) && (!f('kind') || r.kind === f('kind')) && (!f('user_id') || r.user_id === f('user_id')) && (!f('created_at') || r.created_at >= f('created_at'))));
     }
     // PostgREST
     if (p === '/rest/v1/ace_runs') {
@@ -316,6 +323,11 @@ runs.set('routerun0006', { status: 'success', result: { videos: [{ id: 1, scenes
 await post('/api/jobs/routerun0006/render-videos', {});
 check('route: no selection means every video (empty "only")', github.calls.find((c) => c.body.inputs.run_id === 'routerun0006').body.inputs.only === '');
 
+// ---- usage report through the real server ----
+x = await api('GET', '/api/usage?range=all');
+check('route: starting a render is logged and shows in /api/usage with the estimated voice cost', x.status === 200 && x.json.enabled === true && x.json.totals.video.count >= 1 && Math.abs(x.json.totals.video.cost - x.json.totals.video.count * 0.1) < 1e-9 && x.json.byRun.some((r) => r.runId === 'routerun0001'), JSON.stringify(x.json).slice(0, 300));
+check('route: the report carries the assumed prices so the page can show them', x.json.prices && x.json.prices.videoCredits === 500);
+
 // ---- Drive folder structure and clean-up on delete ----
 const delApi = (id) => api('DELETE', '/api/jobs/' + id);
 runs.set('folderrun001', { created_at: '2026-11-20T10:00:00Z', url: 'https://www.acme-hvac.com', result: { business: 'Acme: Heating / Cooling', videos: [{ id: 1, scenes: [{ vo: 'x' }] }] }, status: 'success' });
@@ -361,6 +373,35 @@ runs.set('folderrun005', { created_at: '2026-11-20T10:00:00Z', url: 'https://x.t
 n8n.folderCalls.length = 0;
 x = await delApi('folderrun005');
 check('delete: a run with no result yet does not touch Drive', x.status === 200 && x.json.drive === 'none' && n8n.folderCalls.length === 0, JSON.stringify(x.json));
+
+// ---- usage and cost report ----
+{
+  const { createUsage, pricesFrom, claudeUsageFromRunData } = await import('../app/server/usage.js');
+  const prices = pricesFrom((k) => ({ PRICE_IMAGE_HIGH: '0.2' }[k] || ''));
+  check('usage: prices have sensible defaults and can be overridden', prices.claudeInPerMTok === 3 && prices.image.medium === 0.04 && prices.image.high === 0.2 && prices.videoCredits === 500, JSON.stringify(prices));
+  const cu = claudeUsageFromRunData({ 'Brand Brief (Claude)': [{ data: { main: [[{ json: { usage: { input_tokens: 1000, output_tokens: 500 }, model: 'm' } }]] } }], 'Hooks (Claude)': [{ data: { main: [[{ json: { usage: { input_tokens: 2000, output_tokens: 1500 } } }]] } }], 'Other node': [{ data: { main: [[{ json: { usage: { input_tokens: 9e9 } } }]] } }] });
+  check('usage: Claude tokens are summed from the (Claude) nodes only', cu.inTok === 3000 && cu.outTok === 2000 && cu.calls === 2, JSON.stringify(cu));
+  const rows = [];
+  const mem = { usage: { async add(e) { rows.push({ id: rows.length, at: new Date().toISOString(), ...e }); }, async has(r, k) { return rows.some((e) => e.runId === r && e.kind === k); }, async list({ userId, since } = {}) { return rows.filter((e) => (!userId || e.userId === userId) && (!since || e.at >= since)); } } };
+  const us = createUsage({ store: mem, prices, profiles: { async list() { return [{ id: 'u1', email: 'ann@x.com' }, { id: 'u2', email: 'bob@x.com' }]; } } });
+  await us.recordRun({ id: 'r1', userId: 'u1' }, { inTok: 100000, outTok: 20000, calls: 9, images: 4, imageQuality: 'medium' });
+  await us.recordRun({ id: 'r1', userId: 'u1' }, { inTok: 1, outTok: 1, calls: 1, images: 1 });
+  await us.recordImage({ id: 'r1', userId: 'u1' }, 'high', 'u2');
+  await us.recordVideos({ id: 'r2', userId: 'u2' }, 2, 'bob@x.com', 'u2');
+  check('usage: a run is recorded once (Claude + its images), never twice', rows.filter((e) => e.runId === 'r1' && e.kind === 'claude').length === 1 && rows.filter((e) => e.kind === 'image').length === 2, JSON.stringify(rows.map((e) => e.kind)));
+  const claude = rows.find((e) => e.kind === 'claude');
+  check('usage: Claude cost = tokens x price (100k in, 20k out = $0.30 + $0.30)', Math.abs(claude.cost - 0.6) < 1e-9 && claude.units === 120000, JSON.stringify(claude));
+  check('usage: images by quality and videos by credits (2 videos = 1000 credits = $0.20)', rows.find((e) => e.kind === 'image' && e.quality === 'medium').cost === 0.16 && rows.find((e) => e.quality === 'high').cost === 0.2 && rows.find((e) => e.kind === 'video').cost === 0.2 && rows.find((e) => e.kind === 'video').meta.credits === 1000);
+  check('usage: a button-made image is charged to the person who clicked', rows.find((e) => e.quality === 'high').userId === 'u2');
+  const jobs = [{ id: 'r1', businessName: 'Acme', url: 'https://acme.test' }];
+  const adminRep = await us.report({ viewer: { id: 'admin', isAdmin: true }, range: 'all', jobs });
+  check('usage report (admin): total and per-account split with emails', Math.abs(adminRep.totals.cost - (0.6 + 0.16 + 0.2 + 0.2)) < 1e-9 && adminRep.byUser.length === 2 && adminRep.byUser.find((x) => x.email === 'ann@x.com').runs === 1 && adminRep.byUser.find((x) => x.email === 'bob@x.com').videos === 2, JSON.stringify(adminRep.byUser));
+  check('usage report: runs are labelled, removed runs say so', adminRep.byRun.find((r) => r.runId === 'r1').label === 'Acme' && adminRep.byRun.find((r) => r.runId === 'r2').removed === true);
+  const bobRep = await us.report({ viewer: { id: 'u2', isAdmin: false }, range: 'month', userId: 'u1', jobs });
+  check('usage report (member): sees only their own usage, even if they ask for someone else', bobRep.byUser === null && bobRep.totals.cost === 0.4 && bobRep.scope === 'u2', JSON.stringify([bobRep.totals.cost, bobRep.scope]));
+  const off = createUsage({ store: { }, prices });
+  check('usage: without the usage table the app keeps working and says tracking is off', (await off.report({ viewer: { isAdmin: true } })).enabled === false);
+}
 
 // ---- "Generate image" for one static ad ----
 {

@@ -42,3 +42,24 @@ create table if not exists public.ace_profiles (
 alter table public.ace_profiles enable row level security;  -- no policies: only the backend's secret key can touch it
 
 notify pgrst, 'reload schema';
+
+-- ---------------------------------------------------------------------------
+-- Usage and cost report: one row per billable action (safe to run more than once)
+-- ---------------------------------------------------------------------------
+create table if not exists public.ace_usage (
+  id         bigint generated always as identity primary key,
+  user_id    uuid references auth.users (id) on delete set null,
+  run_id     text,
+  kind       text        not null,            -- 'claude' | 'image' | 'video'
+  units      numeric     not null default 0,  -- tokens (claude), images, videos
+  unit_label text,
+  quality    text,
+  est_cost   numeric     not null default 0,  -- estimated US dollars at list prices
+  meta       jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists ace_usage_user_idx on public.ace_usage (user_id, created_at desc);
+create index if not exists ace_usage_run_idx  on public.ace_usage (run_id);
+alter table public.ace_usage enable row level security;  -- no policies: only the backend's secret key can touch it
+
+notify pgrst, 'reload schema';

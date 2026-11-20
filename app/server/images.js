@@ -9,7 +9,7 @@ import { cleanName, runFolderName } from './drive.js';
 const TIMEOUT_MS = 8 * 60 * 1000;
 const errorStates = ['error', 'crashed', 'canceled'];
 
-export function createImages({ hookUrl, driveHookUrl, n8nApi, workflowName = 'ACE - Render one image', fetchImpl = fetch, quality = 'medium', now = () => Date.now() }) {
+export function createImages({ hookUrl, driveHookUrl, n8nApi, workflowName = 'ACE - Render one image', fetchImpl = fetch, quality = 'medium', now = () => Date.now(), onDone = null }) {
   const configured = !!hookUrl;
   const businessOf = (result) => cleanName(result.business || (result.brief && result.brief.business_name)) || 'Unnamed business';
   // The run's "Static ads" folder: inside the run folder the main workflow recorded, else found by name.
@@ -28,7 +28,7 @@ export function createImages({ hookUrl, driveHookUrl, n8nApi, workflowName = 'AC
 
     // Starts one image. Returns the changed result (the caller saves it).
     // opts: { quality: 'low'|'medium'|'high', note: what to change when making it again }
-    async start(job, id, opts = {}) {
+    async start(job, id, opts = {}) { // opts.by = the account that clicked (kept for the usage report)
       if (!configured) throw Object.assign(new Error('Single-image rendering is not set up yet (run tools/deploy_image_n8n.js).'), { status: 409 });
       const result = job.result;
       const s = result && Array.isArray(result.statics) && result.statics.find((x) => x.id === id);
@@ -52,6 +52,7 @@ export function createImages({ hookUrl, driveHookUrl, n8nApi, workflowName = 'AC
       s.image_status = 'rendering:' + started.execution_id;
       s.image_file = fileName;
       s.image_quality = q;
+      s.image_by = opts.by || null;
       s.image_started = new Date(now()).toISOString();
       return result;
     },
@@ -71,7 +72,7 @@ export function createImages({ hookUrl, driveHookUrl, n8nApi, workflowName = 'AC
           try {
             const after = new Date(new Date(s.image_started || 0).getTime() - 15000).toISOString();
             const f = await postJson(driveHookUrl, { action: 'find', create: false, ...folderFor(job, result), fileName: s.image_file, after }, 25000);
-            if (f && f.found && f.url) { finish({ image_url: f.url, image_status: 'ok' }); continue; }
+            if (f && f.found && f.url) { finish({ image_url: f.url, image_status: 'ok' }); if (onDone) await Promise.resolve(onDone(job, s)).catch(() => {}); continue; }
           } catch { /* Drive or n8n briefly unavailable: look again on the next poll */ }
         }
         // 2. Did the workflow fail? Failed executions are kept and are small.

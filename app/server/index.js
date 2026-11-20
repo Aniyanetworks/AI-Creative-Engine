@@ -16,6 +16,7 @@ import { createRenderer } from './render.js';
 import { listVoices, isVoiceId } from './voices.js';
 import { createDrive } from './drive.js';
 import { createImages } from './images.js';
+import { createUsage, pricesFrom, claudeUsageFromRunData } from './usage.js';
 
 dns.setDefaultResultOrder('ipv4first');
 if (net.setDefaultAutoSelectFamilyAttemptTimeout) net.setDefaultAutoSelectFamilyAttemptTimeout(5000);
@@ -76,7 +77,9 @@ let imageHook = pick('N8N_IMAGE_WEBHOOK_URL');
 if (!imageHook) {
   try { imageHook = N8N_BASE + '/webhook/' + fs.readFileSync(path.join(projectRoot, 'workflow', '.image-webhook-path'), 'utf8').trim(); } catch { /* not deployed or on Netlify */ }
 }
-const images = createImages({ hookUrl: imageHook, driveHookUrl: driveHook, n8nApi: (p) => n8n(p), quality: pick('IMAGE_QUALITY') || 'medium' });
+// Usage and cost report (see app/server/usage.js)
+const usage = createUsage({ store, prices: pricesFrom(pick), profiles: store.profiles });
+const images = createImages({ hookUrl: imageHook, driveHookUrl: driveHook, n8nApi: (p) => n8n(p), quality: pick('IMAGE_QUALITY') || 'medium', onDone: (job, s) => usage.recordImage(job, s.image_quality || 'medium', s.image_by) });
 
 const AUTH_ON = store.kind === 'supabase' && pick('AUTH_REQUIRED').toLowerCase() !== 'false';
 const auth = AUTH_ON ? createAuth({ supabaseUrl: SUPABASE_URL, apiKey: SUPABASE_PUBLISHABLE || SUPABASE_KEY }) : null;
@@ -186,8 +189,17 @@ async function refreshJob(job) {
   }
   if (FINAL.has(out.status)) {
     await store.update(job.id, { status: out.status, stages: out.stages, result: out.result || null, error: out.error || null, failedNode: out.failedNode || null, finishedAt: new Date().toISOString() });
+    if (out.status === 'success') {
+      const runData = exec && exec.data && exec.data.resultData && exec.data.resultData.runData;
+      const cu = claudeUsageFromRunData(runData);
+      const cfg = firstJson(runData, 'Config') || {};
+      await usage.recordRun(job, { ...cu, images: (out.result && out.result.stats && out.result.stats.statics_rendered) || 0, imageQuality: cfg.image_quality || 'medium' });
+    }
     if (out.status === 'success' && renderer.shouldAuto(job, out.result)) {
-      try { await renderer.dispatch(job.id, { by: 'auto' }); } catch (e) { console.error('Automatic video render could not start for run ' + job.id + ': ' + e.message); }
+      try {
+        const started = await renderer.dispatch(job.id, { by: 'auto' });
+        if (started.started) await usage.recordVideos(job, (out.result.videos || []).filter((v) => (v.scenes || []).length).length, 'auto');
+      } catch (e) { console.error('Automatic video render could not start for run ' + job.id + ': ' + e.message); }
     }
   } else if (job.status !== out.status) {
     await store.update(job.id, { status: out.status });
@@ -405,7 +417,7 @@ app.post('/api/jobs/:id/statics/:n/image', authenticate, approved, async (req, r
     if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
     if (job.status !== 'success' || !job.result) return res.status(409).json({ error: 'Wait until the run has finished.' });
     const n = parseInt(req.params.n, 10);
-    const result = await images.start(job, n, { quality: req.body && req.body.quality, note: req.body && req.body.note });
+    const result = await images.start(job, n, { quality: req.body && req.body.quality, note: req.body && req.body.note, by: req.user.id });
     await store.update(job.id, { result });
     res.json({ ok: true });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
@@ -443,7 +455,17 @@ app.post('/api/jobs/:id/render-videos', authenticate, approved, async (req, res)
     if (only.length && !only.every((n) => have.includes(n))) return res.status(400).json({ error: 'One of the selected videos has no storyboard.' });
     const r = await renderer.dispatch(job.id, { by: req.user.email || 'user', force: true, voiceId, only });
     if (!r.started) return res.status(409).json({ error: r.reason === 'in-progress' ? 'A render is already in progress for this run.' : 'Could not start the render.' });
+    await usage.recordVideos(job, only.length || have.length, req.user.email || 'user', req.user.id);
     res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// Usage and estimated cost: admins see every account, everyone else only their own.
+app.get('/api/usage', authenticate, approved, async (req, res) => {
+  try {
+    const range = ['month', '30d', 'all'].includes(req.query.range) ? req.query.range : 'month';
+    const jobs = await store.list(req.user.isAdmin ? {} : { userId: req.user.id });
+    res.json(await usage.report({ viewer: req.user, range, userId: req.query.user, jobs }));
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 

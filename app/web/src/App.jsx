@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Sparkles, Plus, AlertTriangle, Power, Moon, Sun, Users as UsersIcon, Settings, LogOut, RefreshCw } from 'lucide-react';
+import { Sparkles, Plus, AlertTriangle, Power, Moon, Sun, Users as UsersIcon, Settings, LogOut, RefreshCw, Wallet } from 'lucide-react';
 import { api, auth } from './api.js';
 import RunForm from './components/RunForm.jsx';
 import RunView from './components/RunView.jsx';
@@ -8,10 +8,12 @@ import AuthScreen from './components/AuthScreen.jsx';
 import Pending from './components/Pending.jsx';
 import Users from './components/Users.jsx';
 import Account from './components/Account.jsx';
+import Usage from './components/Usage.jsx';
 import { Bone } from './components/Skeletons.jsx';
 
 const USERS = '__users';
 const ACCOUNT = '__account';
+const USAGE = '__usage';
 
 function useTheme() {
   // Light is the default; dark is only used if the user switched it on (remembered in this browser).
@@ -67,7 +69,7 @@ function Main({ me, onSignOut }) {
 
   const wf = status && status.workflow;
   const ready = !!(status && status.n8n && wf && wf.active);
-  const special = activeId === USERS || activeId === ACCOUNT;
+  const special = activeId === USERS || activeId === ACCOUNT || activeId === USAGE;
   const runId = special ? null : activeId;
 
   return (
@@ -82,6 +84,9 @@ function Main({ me, onSignOut }) {
               <span className="tile soft"><UsersIcon size={15} /></span> Users
             </button>
           )}
+          <button className={'themebtn' + (activeId === USAGE ? ' on' : '')} onClick={() => setActiveId(USAGE)}>
+            <span className="tile soft"><Wallet size={15} /></span> Usage and cost
+          </button>
           <button className="themebtn" onClick={toggleTheme} aria-pressed={theme === 'dark'}>
             <span className="tile soft">{theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}</span>
             {theme === 'dark' ? 'Light mode' : 'Dark mode'}
@@ -115,6 +120,7 @@ function Main({ me, onSignOut }) {
         {wf && !wf.active && <div className="banner warn"><AlertTriangle size={16} />{me.isAdmin ? "The workflow is inactive, so new runs can't start. Activating exposes a private webhook link; anyone who had it could spend your API credits." : "The workflow is switched off, so new runs can't start right now. Ask an admin to turn it on."}</div>}
 
         {activeId === USERS ? <Users myEmail={me.email} />
+          : activeId === USAGE ? <Usage me={me} />
           : activeId === ACCOUNT ? <Account me={me} onSignOut={onSignOut} />
           : activeId === null ? <RunForm disabled={!ready} onStarted={async (id) => { await refreshJobs(); setActiveId(id); }} />
           : <RunView key={activeId} id={activeId} onFinished={refreshJobs} onRerun={afterRerun} />}

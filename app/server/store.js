@@ -31,7 +31,7 @@ export function createSupabaseStore(baseUrl, key) {
     if (!r.ok) {
       let msg = text.slice(0, 200);
       try { const j = JSON.parse(text); msg = j.message || j.hint || msg; } catch { /* keep raw */ }
-      if (r.status === 404 || /ace_(runs|profiles)|user_id/.test(msg)) msg += ' (did you run supabase/schema.sql?)';
+      if (r.status === 404 || /ace_(runs|profiles|usage)|user_id/.test(msg)) msg += ' (did you run supabase/schema.sql?)';
       throw Object.assign(new Error('Supabase ' + r.status + ': ' + msg), { status: 502 });
     }
     return text ? JSON.parse(text) : null;
@@ -57,9 +57,23 @@ export function createSupabaseStore(baseUrl, key) {
     async setApproved(id, approved) { await call('ace_profiles', '?id=eq.' + q(id), { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ approved: !!approved }) }); },
   };
 
+  // Usage events (see app/server/usage.js). Needs the ace_usage table from supabase/schema.sql.
+  const usage = {
+    async add(ev) {
+      await call('ace_usage', '', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ user_id: ev.userId || null, run_id: ev.runId || null, kind: ev.kind, units: ev.units || 0, unit_label: ev.unitLabel || null, quality: ev.quality || null, est_cost: ev.cost || 0, meta: ev.meta || null }) });
+    },
+    async has(runId, kind) { const rows = await call('ace_usage', '?run_id=eq.' + q(runId) + '&kind=eq.' + q(kind) + '&select=id&limit=1'); return rows.length > 0; },
+    async list({ userId, since } = {}) {
+      const f = (userId ? '&user_id=eq.' + q(userId) : '') + (since ? '&created_at=gte.' + q(since) : '');
+      const rows = await call('ace_usage', '?select=*&order=created_at.desc&limit=5000' + f);
+      return rows.map((r) => ({ id: r.id, userId: r.user_id, runId: r.run_id, kind: r.kind, units: Number(r.units), unitLabel: r.unit_label, quality: r.quality, cost: Number(r.est_cost), meta: r.meta, at: r.created_at }));
+    },
+  };
+
   return {
     kind: 'supabase',
     profiles,
+    usage,
     async list(filter = {}) {
       const who = filter.userId ? '&user_id=eq.' + q(filter.userId) : '';
       return (await call('ace_runs', '?select=' + LIST_COLS + who + '&order=created_at.desc&limit=200')).map(fromRow);
@@ -89,8 +103,17 @@ export function createLocalStore(dataDir) {
   try { jobs = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { jobs = []; }
   const save = () => fs.writeFileSync(file, JSON.stringify(jobs.slice(0, 200), null, 2));
   const slim = ({ result, stages, ...rest }) => rest; // list view stays light
+  const usageFile = path.join(dataDir, 'usage.json');
+  let events = [];
+  try { events = JSON.parse(fs.readFileSync(usageFile, 'utf8')); } catch { events = []; }
+  const usage = {
+    async add(ev) { events.unshift({ id: Date.now() + Math.random(), userId: ev.userId || null, runId: ev.runId || null, kind: ev.kind, units: ev.units || 0, unitLabel: ev.unitLabel || null, quality: ev.quality || null, cost: ev.cost || 0, meta: ev.meta || null, at: new Date().toISOString() }); fs.writeFileSync(usageFile, JSON.stringify(events.slice(0, 5000))); },
+    async has(runId, kind) { return events.some((e) => e.runId === runId && e.kind === kind); },
+    async list({ userId, since } = {}) { return events.filter((e) => (!userId || e.userId === userId) && (!since || e.at >= since)); },
+  };
   return {
     kind: 'local',
+    usage,
     profiles: null, // accounts need Supabase
     async list() { return jobs.map(slim); },
     async get(id) { return jobs.find((j) => j.id === id) || null; },
