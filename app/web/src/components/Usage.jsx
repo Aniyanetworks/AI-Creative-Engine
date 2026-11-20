@@ -66,9 +66,9 @@ export default function Usage({ me }) {
       {data.byDay.length > 0 && (
         <>
           <h3>By day</h3>
-          <div className="bars" role="img" aria-label="Estimated cost per day">
+          <div className="dbars" role="img" aria-label="Estimated cost per day">
             {data.byDay.map((d) => (
-              <div key={d.day} className="bar" title={day(d.day) + ': ' + usd(d.cost)}>
+              <div key={d.day} className="dbar" title={day(d.day) + ': ' + usd(d.cost)}>
                 <i style={{ height: Math.max(4, Math.round((d.cost / maxDay) * 100)) + '%' }} />
                 <span>{day(d.day)}</span>
               </div>
