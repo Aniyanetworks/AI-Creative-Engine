@@ -279,7 +279,11 @@ function PlatformBadges({ aspect, video }) {
   const list = PLATFORMS[video ? 'video' : aspect] || [];
   if (!list.length) return null;
   return (
-    <div className="platforms" aria-label="Where this can run">
+    <div className="platforms" aria-label="Ad type and where it can run">
+      <span className="typechip" title={video ? 'Vertical video ad, 9:16' : aspect === '9:16' ? 'Story and Reel image ad, 9:16 (1080 x 1920)' : 'Feed image ad, 1:1 (1080 x 1080)'}>
+        {video ? <Clapperboard size={13} aria-hidden /> : aspect === '9:16' ? <Smartphone size={13} aria-hidden /> : <Square size={13} aria-hidden />}
+        {video ? 'Vertical video' : aspect === '9:16' ? 'Story image' : 'Feed image'}
+      </span>
       {list.map(({ key, name, where, Icon, tip }) => (
         <span key={key} className={'plat ' + key} title={tip} role="img" aria-label={name + ' ' + where}><Icon size={15} aria-hidden /></span>
       ))}

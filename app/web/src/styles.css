@@ -395,3 +395,5 @@ select:hover { border-color: var(--muted); } select:focus-visible { outline: 2px
 /* Platform badges: icons only (the hover text names the placements) */
 .plat { width: 28px; height: 28px; padding: 0; justify-content: center; gap: 0; }
 .platforms { gap: 6px; }
+
+.typechip { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; white-space: nowrap; cursor: default; }
