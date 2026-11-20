@@ -285,6 +285,7 @@ function Statics({ pack, jobId, onChanged, goAccount, defaultLink }) {
               
               
               {withImg.length > 0 && <button type="button" className="ghost" onClick={() => setSel(sel.size ? new Set() : new Set(withImg.map((x) => x.id)))}>{sel.size ? 'Clear selection' : 'Select ' + withImg.length + ' with images'}</button>}
+              {canMake && withImg.length > 0 && <button type="button" className="ghost" onClick={() => { if (!sel.size) setSel(new Set(withImg.map((x) => x.id))); setPosting(true); }} title="Post to Facebook, Instagram or Meta ads"><Send size={13} /> Post…</button>}
               <TagButton kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} compact />
               
               <MoreBar kind="statics" pack={pack} jobId={jobId} onChanged={onChanged} />
