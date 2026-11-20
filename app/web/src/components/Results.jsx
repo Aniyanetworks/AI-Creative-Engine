@@ -51,13 +51,33 @@ const isRendering = (s) => /^rendering:/.test((s && s.image_status) || '');
 const isFailed = (s) => /^failed/.test((s && s.image_status) || '');
 
 // One ad, laid out like the real thing: page header, caption, picture, headline and button.
-function StaticCard({ s, brand, busy, onMake, canMake }) {
+function StaticCard({ s, brand, jobId, busy, onMake, canMake }) {
   const [more, setMore] = useState(false);
   const [refine, setRefine] = useState(false);
   const [note, setNote] = useState('');
   const [thumbBad, setThumbBad] = useState(false);
   const id = driveId(s.image_url);
-  const showImg = !!id && !thumbBad;
+  // Drive files are private: ask the app (through n8n) for a picture link the browser can show. A just-made image can need a few
+  // seconds before Drive has a thumbnail, so ask again a few times.
+  const [src, setSrc] = useState(null);
+  useEffect(() => {
+    setSrc(null); setThumbBad(false);
+    if (!id || !jobId) return undefined;
+    let stop = false; let tries = 0; let timer;
+    const ask = async () => {
+      try {
+        const r = await api.getPreview(jobId, s.id);
+        if (stop) return;
+        if (r.ready && r.url) { setSrc(r.url); return; }
+      } catch { /* try the fallback below */ }
+      tries += 1;
+      if (tries < 6 && !stop) timer = setTimeout(ask, 3500);
+      else if (!stop) setSrc('https://drive.google.com/thumbnail?id=' + id + '&sz=w800'); // last resort: works if this browser is signed in to Drive
+    };
+    ask();
+    return () => { stop = true; clearTimeout(timer); };
+  }, [id, jobId, s.id]);
+  const showImg = !!id && !!src && !thumbBad;
   const tall = s.aspect === '9:16';
   const text = [s.headline, '', s.primary_text, '', 'CTA: ' + s.cta, ...((s.hashtags || []).length ? ['', s.hashtags.join(' ')] : [])].join('\n');
   const state = busy ? 'making' : s.image_url ? 'done' : isFailed(s) ? 'failed' : 'concept';
@@ -72,13 +92,16 @@ function StaticCard({ s, brand, busy, onMake, canMake }) {
         {String(s.primary_text || '').length > 130 && <button type="button" className="linkbtn" onClick={() => setMore(!more)}>{more ? 'Show less' : 'Show more'}</button>}
       </div>
       <div className={'ad-media ' + (tall ? 'tall' : 'sq')}>
-        {showImg ? (
-          <img src={'https://drive.google.com/thumbnail?id=' + id + '&sz=w800'} alt={s.overlay_text} loading="lazy" referrerPolicy="no-referrer" onError={() => setThumbBad(true)} />
+        {id && !src && !thumbBad ? (
+          <div className="ad-concept" style={{ background: 'var(--soft)', color: 'var(--muted)' }}><span className="row gap" style={{ fontSize: 14, fontWeight: 600 }}><Loader2 size={16} className="rot" /> Loading preview…</span></div>
+        ) : showImg ? (
+          <img key={src} className={busy ? 'stale' : ''} src={src} alt={s.overlay_text} loading="lazy" referrerPolicy="no-referrer" onError={() => setThumbBad(true)} />
         ) : (
           <div className="ad-concept" style={{ background: brand.accent ? 'linear-gradient(135deg,' + brand.base + ',' + brand.accent + ')' : brand.base, color: brand.fg }}>
             <span>{s.overlay_text}</span>
           </div>
         )}
+        {busy && s.image_url && <div className="ad-making"><Loader2 size={18} className="rot" /><span>Making a new image… the old one is shown until it is ready</span></div>}
         <span className={'ad-badge ' + state}>
           {state === 'making' ? <><Loader2 size={12} className="rot" /> Making image…</> : state === 'done' ? 'Image ready' : state === 'failed' ? 'Failed' : 'Concept preview'}
         </span>
@@ -200,7 +223,7 @@ function Statics({ pack, jobId, onChanged }) {
       {list.length === 0 && <p className="muted" style={{ padding: '24px 0' }}>No ads match these filters.</p>}
       <div className="cards ads">
         {list.map((s) => (
-          <StaticCard key={s.id} s={s} brand={brand} canMake={canMake} onMake={makeImage} busy={isRendering(s) || starting.has(s.id)} />
+          <StaticCard key={s.id} s={s} brand={brand} jobId={jobId} canMake={canMake} onMake={makeImage} busy={isRendering(s) || starting.has(s.id)} />
         ))}
       </div>
     </>

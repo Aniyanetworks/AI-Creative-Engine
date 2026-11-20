@@ -342,3 +342,5 @@ section.card > .urow:first-child { border-top: 0; }
 .utable th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .utable td { padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .utable tr.me td { background: var(--accent-soft); } .utable tr.gone td { color: var(--muted); }
+.ad-media img.stale { filter: grayscale(.6) blur(2px); opacity: .55; }
+.ad-making { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; text-align: center; padding: 20px; font-size: 13px; font-weight: 600; color: var(--text); }

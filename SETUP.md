@@ -147,7 +147,7 @@ One-time setup (about 5 minutes):
 
 Troubleshooting: the Videos tab shows the failure reason and a link to the GitHub Actions log. To run it by hand: GitHub > Actions > *Render videos* > Run workflow > paste the run id. A render that has not finished after 45 minutes is reported as failed. Videos over 50 MB are refused by Supabase's free plan; lower the quality in `render.mjs` (`--crf`) if that ever happens.
 
-Tests: `node tools/test_render.mjs` (102 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
+Tests: `node tools/test_render.mjs` (106 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
 
 ### Choosing the voice
 Before a render, the Videos tab has a **Voiceover voice** menu (your choice is remembered in the browser). It lists your ElevenLabs account's voices when the key has the **Voices: Read** permission (add `ELEVENLABS_API_KEY` to Netlify too, so the app can list them); otherwise it shows ElevenLabs' stock voices. Pick *Other* to paste any voice id from ElevenLabs > Voices. The choice goes to the workflow as an input and falls back to the `ELEVENLABS_VOICE_ID` repository variable.
@@ -191,3 +191,8 @@ Sidebar > **Usage and cost**. Admins see every account (runs, images, videos, Cl
 - **One-time database step:** run the last section of `supabase/schema.sql` (the `ace_usage` table) in your Supabase project's SQL Editor. Until then the page says tracking is off and everything else keeps working.
 - **What is counted:** Claude tokens of each finished run (read from the n8n execution), images made by a run or by the **Generate image** button (charged to the person who clicked, by quality), and videos rendered (voice credits, charged to whoever started the render; automatic renders go to the run's owner). Only usage from the day tracking was switched on is recorded.
 - **Costs are estimates at list prices, not a bill.** Defaults: Claude $3 in / $15 out per million tokens, images $0.01 / $0.04 / $0.17 (draft / standard / high), voice 500 credits per video at $0.20 per 1,000 credits. Override with `PRICE_CLAUDE_INPUT_PER_MTOK`, `PRICE_CLAUDE_OUTPUT_PER_MTOK`, `PRICE_IMAGE_LOW|MEDIUM|HIGH`, `ELEVENLABS_CREDITS_PER_VIDEO`, `PRICE_ELEVENLABS_PER_1K_CREDITS` (also on Netlify). The provider dashboards remain the source of truth.
+
+### Image previews on the cards
+Finished images are private Drive files, so the page cannot link to them directly. The app asks the n8n workflow **ACE - Get image** (`node tools/deploy_preview_n8n.js`) for Drive's own short-lived picture link for the file and shows that, with a "Loading preview…" state while Drive prepares a thumbnail (a just-made image can take a few seconds). Only files named like the app's ads (`..._static_<n>.png`) are ever answered, and nothing is downloaded through n8n or the app. On Netlify add `N8N_PREVIEW_WEBHOOK_URL` (Secret; printed by the deploy script). While an image is being remade the old picture is dimmed with "Making a new image…" until the new one is saved.
+
+The webhook paths in `workflow/.*-webhook-path` are secrets (they are git-ignored). If one is ever committed or shared, delete that file and run the matching `tools/deploy_*_n8n.js` again: it creates a new path and the old URL stops working.

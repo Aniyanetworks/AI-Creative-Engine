@@ -77,6 +77,13 @@ let imageHook = pick('N8N_IMAGE_WEBHOOK_URL');
 if (!imageHook) {
   try { imageHook = N8N_BASE + '/webhook/' + fs.readFileSync(path.join(projectRoot, 'workflow', '.image-webhook-path'), 'utf8').trim(); } catch { /* not deployed or on Netlify */ }
 }
+// Picture links for ad previews (workflow "ACE - Get image"): N8N_PREVIEW_WEBHOOK_URL, or the local path file.
+let previewHook = pick('N8N_PREVIEW_WEBHOOK_URL');
+if (!previewHook) {
+  try { previewHook = N8N_BASE + '/webhook/' + fs.readFileSync(path.join(projectRoot, 'workflow', '.preview-webhook-path'), 'utf8').trim(); } catch { /* not deployed or on Netlify */ }
+}
+const previewCache = new Map(); // Drive file id -> { url, at }
+
 // Usage and cost report (see app/server/usage.js)
 const usage = createUsage({ store, prices: pricesFrom(pick), profiles: store.profiles });
 const images = createImages({ hookUrl: imageHook, driveHookUrl: driveHook, n8nApi: (p) => n8n(p), quality: pick('IMAGE_QUALITY') || 'medium', onDone: (job, s) => usage.recordImage(job, s.image_quality || 'medium', s.image_by) });
@@ -407,6 +414,26 @@ app.get('/api/jobs/:id', authenticate, approved, async (req, res) => {
       if (updated) { await store.update(job.id, { result: updated }); out.result = updated; }
     }
     res.json(out);
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// A link the browser can show for a static ad's finished image. Drive files are private, so n8n (which holds the Drive
+// credential) hands back Drive's own short-lived picture link; nothing is downloaded through the app.
+app.get('/api/jobs/:id/statics/:n/preview', authenticate, approved, async (req, res) => {
+  try {
+    const job = await store.get(req.params.id);
+    if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
+    const s = job.result && (job.result.statics || []).find((x) => x.id === parseInt(req.params.n, 10));
+    const m = s && /[/]d[/]([A-Za-z0-9_-]+)/.exec(s.image_url || '');
+    if (!m) return res.status(404).json({ error: 'This ad has no image yet.' });
+    if (!previewHook) return res.json({ ready: false, reason: 'not-configured' });
+    const hit = previewCache.get(m[1]);
+    if (hit && Date.now() - hit.at < 20 * 60 * 1000) return res.json({ ready: true, url: hit.url });
+    const r = await fetch(previewHook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: m[1] }), signal: AbortSignal.timeout(8000) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j) return res.json({ ready: false, reason: 'n8n-error' });
+    if (j.ready && j.url) previewCache.set(m[1], { url: j.url, at: Date.now() });
+    res.json({ ready: !!(j.ready && j.url), url: j.url || null });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 

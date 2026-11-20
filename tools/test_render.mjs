@@ -17,6 +17,8 @@ const objects = new Map(); // "<path>" -> { body: Buffer, contentType }
 const runs = new Map();    // id -> { result, status }
 const github = { calls: [], fail: 0 };
 const usageRows = [];
+const previewCalls = [];
+const previewAnswer = { v: { ok: true, ready: true, url: 'https://lh3.googleusercontent.com/drive-storage/XYZ=s1000' } };
 const n8n = { calls: [], folderCalls: [], fail: false, folderFail: false, nothingToDelete: false };
 let bucketCreated = false;
 
@@ -36,6 +38,8 @@ const server = http.createServer((req, res) => {
       if (github.fail) return send(github.fail, { message: 'nope' });
       return send(204);
     }
+    // n8n "ACE - Get image" webhook
+    if (p === '/webhook/preview' && req.method === 'POST') { previewCalls.push(JSON.parse(body.toString() || '{}')); return send(200, previewAnswer.v); }
     // n8n "save video to Drive" webhook
     if (p === '/webhook/drive' && req.method === 'POST' && /json/.test(req.headers['content-type'] || '')) {
       const j = JSON.parse(body.toString() || '{}');
@@ -218,7 +222,7 @@ check('finish: "success" with no uploaded files is not reported as done', st.sta
 const PORT = 8799;
 const srv = spawn(process.execPath, ['app/server/index.js'], {
   cwd: root,
-  env: { ...process.env, PORT: String(PORT), SUPABASE_URL: base, SUPABASE_SERVICE_KEY: 'secret-key', AUTH_REQUIRED: 'false', N8N_DRIVE_WEBHOOK_URL: base + '/webhook/drive', GH_DISPATCH_TOKEN: 'ghp_route', GITHUB_REPO: 'acme/engine', GITHUB_API_URL: base },
+  env: { ...process.env, PORT: String(PORT), SUPABASE_URL: base, SUPABASE_SERVICE_KEY: 'secret-key', AUTH_REQUIRED: 'false', N8N_DRIVE_WEBHOOK_URL: base + '/webhook/drive', N8N_PREVIEW_WEBHOOK_URL: base + '/webhook/preview', GH_DISPATCH_TOKEN: 'ghp_route', GITHUB_REPO: 'acme/engine', GITHUB_API_URL: base },
 });
 let srvLog = '';
 srv.stdout.on('data', (x) => (srvLog += x)); srv.stderr.on('data', (x) => (srvLog += x));
@@ -322,6 +326,19 @@ check('route: the status remembers which videos were requested', Array.isArray(x
 runs.set('routerun0006', { status: 'success', result: { videos: [{ id: 1, scenes: [{ vo: 'a' }] }] } });
 await post('/api/jobs/routerun0006/render-videos', {});
 check('route: no selection means every video (empty "only")', github.calls.find((c) => c.body.inputs.run_id === 'routerun0006').body.inputs.only === '');
+
+// ---- picture links for the ad previews ----
+runs.set('previewrun01', { status: 'success', result: { videos: [], statics: [{ id: 1, image_url: 'https://drive.google.com/file/d/FILE_ABC-1/view', image_status: 'ok' }, { id: 2, image_url: null, image_status: 'skipped' }] } });
+x = await api('GET', '/api/jobs/previewrun01/statics/1/preview');
+check('preview: a finished image gets a picture link from n8n (asked by Drive file id only)', x.status === 200 && x.json.ready === true && /googleusercontent/.test(x.json.url) && previewCalls.length === 1 && previewCalls[0].id === 'FILE_ABC-1' && Object.keys(previewCalls[0]).join() === 'id', JSON.stringify(x) + JSON.stringify(previewCalls));
+x = await api('GET', '/api/jobs/previewrun01/statics/1/preview');
+check('preview: the link is cached, so n8n is not asked again for every page view', x.json.ready === true && previewCalls.length === 1);
+x = await api('GET', '/api/jobs/previewrun01/statics/2/preview');
+check('preview: an ad without an image has no preview', x.status === 404, JSON.stringify(x));
+runs.set('previewrun02', { status: 'success', result: { videos: [], statics: [{ id: 1, image_url: 'https://drive.google.com/file/d/NOTYET/view', image_status: 'ok' }] } });
+previewAnswer.v = { ok: true, ready: false, name: 'x.png' };
+x = await api('GET', '/api/jobs/previewrun02/statics/1/preview');
+check('preview: when Drive has no thumbnail yet the app says not ready (the page asks again)', x.status === 200 && x.json.ready === false && x.json.url === null, JSON.stringify(x));
 
 // ---- usage report through the real server ----
 x = await api('GET', '/api/usage?range=all');

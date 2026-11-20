@@ -68,6 +68,7 @@ export const api = {
   removeJob: (id) => call('/jobs/' + id, { method: 'DELETE' }),
   getVideos: (id) => call('/jobs/' + id + '/videos'),
   renderVideos: (id, voiceId, only) => call('/jobs/' + id + '/render-videos', { method: 'POST', body: { voiceId: voiceId || '', only: only || [] } }),
+  getPreview: (id, n) => call('/jobs/' + id + '/statics/' + n + '/preview'),
   renderStatic: (id, n, opts) => call('/jobs/' + id + '/statics/' + n + '/image', { method: 'POST', body: opts || {} }),
   saveToDrive: (id) => call('/jobs/' + id + '/save-to-drive', { method: 'POST' }),
   getUsage: (range, user) => call('/usage?range=' + encodeURIComponent(range || 'month') + (user && user !== 'all' ? '&user=' + encodeURIComponent(user) : '')),
