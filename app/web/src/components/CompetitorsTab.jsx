@@ -7,6 +7,20 @@ import Hint from './Hint.jsx';
 const List = ({ items }) => (items && items.length ? <ul className="plain">{items.map((x, i) => <li key={i}>{typeof x === 'string' ? x : JSON.stringify(x)}</li>)}</ul> : <p className="muted small">None found.</p>);
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '');
+// "Cambridge, Ontario, Canada (serves Waterloo Region, Guelph, GTA, rest of Canada, and remotely the US)" -> short area suggestions
+function areaSuggestions(location, done) {
+  const text = String(location || '');
+  if (!text) return [];
+  const out = [];
+  const main = text.replace(/\([^)]*\)/g, '').replace(/ +/g, ' ').trim();
+  if (main) out.push(main);
+  const inner = (text.match(/\(([^)]*)\)/) || [])[1] || '';
+  for (const part of inner.replace(/^\s*(serves|serving|covers)\s+/i, '').split(/,| and /)) {
+    const t = part.replace(/^(and|the)\s+/i, '').trim();
+    if (t && t.length <= 40 && !/^rest of|remote|worldwide|global/i.test(t)) out.push(t);
+  }
+  return [...new Set(out)].filter((x) => !done.includes(x.toLowerCase())).slice(0, 6);
+}
 const CONF = { high: 'Well sourced', medium: 'Some sources', low: 'Thin evidence' };
 
 function CompetitorCard({ c }) {
@@ -86,7 +100,7 @@ export default function CompetitorsTab({ pack, jobId, onChanged }) {
   const researching = !!w && !w.error && w.op === 'research';
   const pending = !!w && !w.error;
   const brief = pack.brief || {};
-  const suggestion = brief.location && !areas.some((a) => a.key === String(brief.location).toLowerCase()) ? brief.location : '';
+  const suggestions = areaSuggestions(brief.location, areas.map((a) => a.key));
 
   const research = async (name) => {
     const target = String(name || area).trim();
@@ -126,11 +140,16 @@ export default function CompetitorsTab({ pack, jobId, onChanged }) {
               <div className="row gap" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
                 <MapPin size={16} aria-hidden />
                 <input list="areas" value={area} onChange={(e) => setArea(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') research(); }} placeholder="Add an area: a city or region, e.g. Waterloo Region" aria-label="Area to research" maxLength={80} style={{ flex: '1 1 260px', minWidth: 200 }} />
-                <datalist id="areas">{suggestion && <option value={suggestion} />}</datalist>
+                <datalist id="areas">{suggestions.map((x) => <option key={x} value={x} />)}</datalist>
                 <button className="btn sm" disabled={busy || pending || !area.trim()} onClick={() => research()}>{busy || researching ? <Loader2 size={13} className="rot" /> : <Search size={13} />} Find local competitors</button>
               </div>
               <p className="note" style={{ margin: '8px 0 0' }}>The app searches the web for real businesses competing there. It takes about a minute and costs roughly 10 to 20 cents per area.</p>
-              {suggestion && !pending && <button type="button" className="linkbtn" onClick={() => research(suggestion)}>Research {suggestion} (the business's own area)</button>}
+              {suggestions.length > 0 && !pending && (
+                <div className="tags" style={{ marginTop: 8 }}>
+                  <span className="note">From the brief:</span>
+                  {suggestions.map((x) => <button key={x} type="button" className="tagchip" style={{ border: 0, cursor: 'pointer' }} onClick={() => setArea(x)} title="Put this area in the box">{x}</button>)}
+                </div>
+              )}
               {researching && <div className="banner" style={{ marginTop: 10 }}><Loader2 size={16} className="rot" /> Researching {w.area}… searching the web and reading pages. You can keep working.</div>}
               {w && w.error && w.op === 'research' && <div className="banner err" style={{ marginTop: 10 }}><AlertTriangle size={16} />{w.error}<button type="button" className="ghost" style={{ marginLeft: 'auto' }} onClick={async () => { try { await api.dismissWrite(jobId); await onChanged(); } catch { /* ignore */ } }}>Dismiss</button></div>}
               {err && <div className="banner err" style={{ marginTop: 10 }}><AlertTriangle size={16} />{err}</div>}
