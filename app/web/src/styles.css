@@ -478,3 +478,15 @@ select:hover { border-color: var(--muted); } select:focus-visible { outline: 2px
 /* Wider main area: keep text-heavy pages readable while the results grids use the extra room */
 .guide { max-width: 1200px; }
 .cards.ads { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+
+/* Market overview as cards */
+.ovgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-top: 14px; align-items: start; }
+.ovcard { border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; background: var(--surface); }
+.ovcard h3 { display: flex; gap: 8px; align-items: center; margin: 0 0 10px; font-size: 15px; }
+.angles { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.angles li { display: grid; gap: 2px; padding-left: 12px; border-left: 3px solid var(--accent-soft); } .angles li b { font-size: 14px; } .angles li span { font-size: 13px; color: var(--copy); line-height: 1.45; }
+.chiplist { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+.wsgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.ws { border: 1px solid var(--accent); border-radius: var(--r); padding: 14px 16px; background: var(--accent-soft); display: grid; gap: 10px; align-content: space-between; } .ws p { margin: 0; font-size: 14px; line-height: 1.5; }
+.chiplist .chip { cursor: default; color: var(--text); font-size: 13px; line-height: 1.4; border-radius: 10px; padding: 4px 10px; } .chiplist .chip.bad { color: var(--bad); }

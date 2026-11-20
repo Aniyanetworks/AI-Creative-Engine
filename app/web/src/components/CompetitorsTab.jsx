@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, ExternalLink, Loader2, MapPin, PenLine, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, Copy, ExternalLink, Lightbulb, Loader2, MapPin, PenLine, RefreshCw, Search, Target, Trash2 } from 'lucide-react';
 import { api } from '../api.js';
 import { useWritePolling } from './WriteTools.jsx';
 import Hint from './Hint.jsx';
@@ -88,6 +88,61 @@ function AreaSection({ a, jobId, onChanged, busy, onRefresh, onRemove }) {
   );
 }
 
+// The general market overview (from the first run), laid out as cards: what is used, what is overused, and what is open.
+function Overview({ c, jobId, onChanged, goArea }) {
+  const [sent, setSent] = useState('');
+  const [copied, setCopied] = useState('');
+  const [err, setErr] = useState('');
+  const inferred = c.source === 'inferred';
+  const angles = (c.top_angles || []).map((a) => ({ title: a.angle, text: a.how_competitors_use_it }));
+  const writeAds = async (text) => {
+    setErr(''); setSent('');
+    try { await api.writeMore(jobId, { kind: 'statics', op: 'more', count: 4, instruction: ('Build on this opportunity: ' + text).slice(0, 400) }); setSent(text); await onChanged(); }
+    catch (e) { setErr(e.message); }
+  };
+  const copy = (t) => { if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => { setCopied(t); setTimeout(() => setCopied(''), 1400); }, () => {}); };
+  return (
+    <>
+      <div className={'banner ' + (inferred ? 'warn' : 'ok')} style={{ display: 'block' }}>
+        <div className="row between" style={{ gap: 10, flexWrap: 'wrap' }}>
+          <div><strong>{inferred ? 'Based on general knowledge, not on real ads.' : 'Based on real competitor ads or your notes.'}</strong> {inferred ? 'Use it as a list of ideas to test.' : ''}</div>
+          {inferred && <button type="button" className="btn sm" onClick={goArea}><MapPin size={13} /> Research real local competitors</button>}
+        </div>
+        {c.caveat && <details style={{ marginTop: 6 }}><summary className="small">Why this matters</summary><p className="small" style={{ margin: '6px 0 0' }}>{c.caveat}</p></details>}
+      </div>
+
+      <div className="ovgrid">
+        <section className="ovcard">
+          <h3><Search size={16} /> What competitors do</h3>
+          {angles.length === 0 ? <p className="muted small">None listed.</p> : <ul className="angles">{angles.map((a, i) => <li key={i}><b>{a.title}</b><span>{a.text}</span></li>)}</ul>}
+        </section>
+        <section className="ovcard">
+          <h3><AlertTriangle size={16} /> Overused: avoid or twist</h3>
+          {(c.saturated || []).length ? <div className="chiplist">{c.saturated.map((x) => <span key={x} className="chip bad">{x}</span>)}</div> : <p className="muted small">None listed.</p>}
+          <h3 style={{ marginTop: 18 }}><Target size={16} /> Common offers</h3>
+          {(c.common_offers || []).length ? <div className="chiplist">{c.common_offers.map((x) => <span key={x} className="chip">{x}</span>)}</div> : <p className="muted small">None listed.</p>}
+        </section>
+      </div>
+
+      <h3 style={{ margin: '22px 0 10px', display: 'flex', gap: 8, alignItems: 'center' }}><Lightbulb size={17} /> White space: angles you can own</h3>
+      {(c.white_space || []).length === 0 ? <p className="muted small">None listed.</p> : (
+        <div className="wsgrid">
+          {c.white_space.map((w, i) => (
+            <article key={i} className="ws">
+              <p>{w}</p>
+              <div className="row gap">
+                {jobId && onChanged && <button type="button" className="ghost sm" onClick={() => writeAds(w)} title="Writes 4 new ad concepts built on this angle"><PenLine size={12} /> {sent === w ? 'Writing…' : 'Write ads'}</button>}
+                <button type="button" className="ghost sm" onClick={() => copy(w)}>{copied === w ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      {err && <div className="banner err" style={{ marginTop: 10 }}><AlertTriangle size={16} />{err}</div>}
+    </>
+  );
+}
+
 // Competitors tab: the general market overview, plus real local competitors researched area by area.
 export default function CompetitorsTab({ pack, jobId, onChanged }) {
   const c = pack.competitors || {};
@@ -123,15 +178,7 @@ export default function CompetitorsTab({ pack, jobId, onChanged }) {
         <Hint id="comp.area" />
       </div>
 
-      {view === 'overview' && (
-        <>
-          <div className={'banner ' + (c.source === 'inferred' ? 'warn' : 'ok')}><strong>Source: {c.source}.</strong> {c.caveat}</div>
-          <div className="grid2">
-            <div><h3>Angles competitors use</h3><List items={(c.top_angles || []).map((a) => a.angle + ': ' + a.how_competitors_use_it)} /><h3>Common offers</h3><List items={c.common_offers} /></div>
-            <div><h3>Saturated</h3><List items={c.saturated} /><h3>White space (opportunity)</h3><List items={c.white_space} /></div>
-          </div>
-        </>
-      )}
+      {view === 'overview' && <Overview c={c} jobId={jobId} onChanged={onChanged} goArea={() => setView('area')} />}
 
       {view === 'area' && (
         <>
