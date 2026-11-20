@@ -13,6 +13,10 @@ let status = 'done';
 let message;
 if (prepare !== 'success') { status = 'failed'; message = 'The render could not start (' + prepare + '). Open the GitHub Actions log for details.'; }
 else if (driveOnly) { if (drive !== 'success') message = 'Saving to Google Drive failed (see the link on each video, or the GitHub Actions log). The videos themselves are fine.'; }
+else if (render !== 'success' && Array.isArray(cur.only) && cur.only.length) {
+  status = 'failed';
+  message = (cur.only.length === 1 ? 'Video ' + cur.only[0] + ' did not render' : 'Videos ' + cur.only.join(', ') + ' did not all render') + '. Your other videos are unchanged. The usual cause is the voiceover (ElevenLabs credits or billing); the GitHub Actions log shows the exact reason.';
+}
 else if (render !== 'success') { status = 'failed'; message = mp4s.length ? 'Some videos failed to render (' + mp4s.length + ' finished). Open the GitHub Actions log for details.' : 'Rendering failed (' + render + '). Open the GitHub Actions log for details.'; }
 else if (!mp4s.length) { status = 'failed'; message = 'The render finished but no video files were uploaded.'; }
 
