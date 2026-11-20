@@ -78,7 +78,7 @@ async function voiceover(text, file) {
   });
   if (!r.ok) {
     const body = await r.text();
-    const hint = r.status === 401 ? ' (check ELEVENLABS_API_KEY)' : r.status === 402 || /quota/i.test(body) ? ' (ElevenLabs credits used up)' : r.status === 404 ? ' (check ELEVENLABS_VOICE_ID)' : '';
+    const hint = /payment_required|payment_issue|failed or incomplete payment/i.test(body) ? ' (your ElevenLabs subscription payment failed: fix billing at elevenlabs.io > Settings > Subscription, then render again)' : r.status === 401 ? ' (check ELEVENLABS_API_KEY)' : r.status === 402 || /quota/i.test(body) ? ' (ElevenLabs credits used up)' : r.status === 404 ? ' (check ELEVENLABS_VOICE_ID)' : '';
     throw new Error('ElevenLabs HTTP ' + r.status + hint + ': ' + body.slice(0, 160));
   }
   const j = await r.json();
