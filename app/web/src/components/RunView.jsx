@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Globe, FileText, ScanSearch, Lightbulb, Image as ImageIcon, Clapperboard, Video, Package, Check, Loader2, AlertTriangle, Minus, Clock } from 'lucide-react';
 import { api } from '../api.js';
+import RunCost from './RunCost.jsx';
 import Results from './Results.jsx';
 import RerunButton from './RerunButton.jsx';
 import { RunSkeleton } from './Skeletons.jsx';
@@ -88,6 +89,7 @@ export default function RunView({ id, onFinished, onRerun }) {
             {job.status === 'success' ? <Check size={13} strokeWidth={3} /> : job.status === 'error' ? <AlertTriangle size={13} /> : <Clock size={13} />}
             {job.status === 'success' ? 'Finished' : job.status === 'error' ? 'Failed' : 'Running · ' + mmss(elapsed)}
           </span>
+            <RunCost jobId={job.id} status={job.status} stamp={JSON.stringify((job.result && job.result.stats) || {}) + (job.result && (job.result.statics || []).map((x) => x.image_url || '').join('').length)} />
             {job.status !== 'running' && job.status !== 'queued' && onRerun ? <RerunButton job={job} onStarted={onRerun} primary={job.status === 'error'} /> : null}
           </div>
         </div>

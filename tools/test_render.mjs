@@ -343,6 +343,11 @@ check('preview: when Drive has no thumbnail yet the app says not ready (the page
 // ---- usage report through the real server ----
 x = await api('GET', '/api/usage?range=all');
 check('route: starting a render is logged and shows in /api/usage with the estimated voice cost', x.status === 200 && x.json.enabled === true && x.json.totals.video.count >= 1 && Math.abs(x.json.totals.video.cost - x.json.totals.video.count * 0.1) < 1e-9 && x.json.byRun.some((r) => r.runId === 'routerun0001'), JSON.stringify(x.json).slice(0, 300));
+x = await api('GET', '/api/jobs/routerun0001/usage');
+check('route: one run cost report shows its voice cost', x.status === 200 && x.json.enabled === true && x.json.videos.count >= 1 && x.json.cost === x.json.videos.cost && x.json.tracked === true, JSON.stringify(x.json).slice(0, 240));
+x = await api('GET', '/api/jobs/doesnotexist1/usage');
+check('route: a cost report for an unknown run is a 404', x.status === 404);
+x = await api('GET', '/api/usage?range=all');
 check('route: the report carries the assumed prices so the page can show them', x.json.prices && x.json.prices.videoCredits === 500);
 
 // ---- Drive folder structure and clean-up on delete ----
@@ -399,7 +404,7 @@ check('delete: a run with no result yet does not touch Drive', x.status === 200 
   const cu = claudeUsageFromRunData({ 'Brand Brief (Claude)': [{ data: { main: [[{ json: { usage: { input_tokens: 1000, output_tokens: 500 }, model: 'm' } }]] } }], 'Hooks (Claude)': [{ data: { main: [[{ json: { usage: { input_tokens: 2000, output_tokens: 1500 } } }]] } }], 'Other node': [{ data: { main: [[{ json: { usage: { input_tokens: 9e9 } } }]] } }] });
   check('usage: Claude tokens are summed from the (Claude) nodes only', cu.inTok === 3000 && cu.outTok === 2000 && cu.calls === 2, JSON.stringify(cu));
   const rows = [];
-  const mem = { usage: { async add(e) { rows.push({ id: rows.length, at: new Date().toISOString(), ...e }); }, async has(r, k) { return rows.some((e) => e.runId === r && e.kind === k); }, async list({ userId, since } = {}) { return rows.filter((e) => (!userId || e.userId === userId) && (!since || e.at >= since)); } } };
+  const mem = { usage: { async add(e) { rows.push({ id: rows.length, at: new Date().toISOString(), ...e }); }, async has(r, k) { return rows.some((e) => e.runId === r && e.kind === k); }, async list({ userId, since, runId } = {}) { return rows.filter((e) => (!userId || e.userId === userId) && (!since || e.at >= since) && (!runId || e.runId === runId)); } } };
   const us = createUsage({ store: mem, prices, profiles: { async list() { return [{ id: 'u1', email: 'ann@x.com' }, { id: 'u2', email: 'bob@x.com' }]; } } });
   await us.recordRun({ id: 'r1', userId: 'u1' }, { inTok: 100000, outTok: 20000, calls: 9, images: 4, imageQuality: 'medium' });
   await us.recordRun({ id: 'r1', userId: 'u1' }, { inTok: 1, outTok: 1, calls: 1, images: 1 });
@@ -416,6 +421,9 @@ check('delete: a run with no result yet does not touch Drive', x.status === 200 
   check('usage report: runs are labelled, removed runs say so', adminRep.byRun.find((r) => r.runId === 'r1').label === 'Acme' && adminRep.byRun.find((r) => r.runId === 'r2').removed === true);
   const bobRep = await us.report({ viewer: { id: 'u2', isAdmin: false }, range: 'month', userId: 'u1', jobs });
   check('usage report (member): sees only their own usage, even if they ask for someone else', bobRep.byUser === null && bobRep.totals.cost === 0.4 && bobRep.scope === 'u2', JSON.stringify([bobRep.totals.cost, bobRep.scope]));
+  const rr = await us.runReport('r1');
+  check('run report: Claude tokens, images by quality and the total for one run', rr.enabled && rr.tracked && rr.claude.inTokens === 100000 && rr.claude.outTokens === 20000 && rr.claude.calls === 9 && rr.images.count === 5 && rr.images.byQuality.medium === 4 && rr.images.byQuality.high === 1 && Math.abs(rr.cost - 0.96) < 1e-9, JSON.stringify(rr));
+  check('run report: a run with nothing recorded says so', (await us.runReport('nope')).tracked === false);
   const off = createUsage({ store: { }, prices });
   check('usage: without the usage table the app keeps working and says tracking is off', (await off.report({ viewer: { isAdmin: true } })).enabled === false);
 }

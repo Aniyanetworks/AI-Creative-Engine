@@ -487,6 +487,15 @@ app.post('/api/jobs/:id/render-videos', authenticate, approved, async (req, res)
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
+// What one run has cost so far (shown in the run header).
+app.get('/api/jobs/:id/usage', authenticate, approved, async (req, res) => {
+  try {
+    const job = await store.get(req.params.id);
+    if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
+    res.json(await usage.runReport(job.id));
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
 // Usage and estimated cost: admins see every account, everyone else only their own.
 app.get('/api/usage', authenticate, approved, async (req, res) => {
   try {

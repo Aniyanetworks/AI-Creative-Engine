@@ -42,6 +42,25 @@ export function createUsage({ store, prices, profiles }) {
     async recordImage(job, quality, userId) { return add({ userId: userId || job.userId, runId: job.id, kind: 'image', units: 1, unitLabel: 'images', quality, cost: costOf.image(1, quality), meta: { source: 'button' } }); },
     async recordVideos(job, count, by, userId) { return add({ userId: userId || job.userId, runId: job.id, kind: 'video', units: count, unitLabel: 'videos', cost: costOf.video(count), meta: { credits: Math.round(count * prices.videoCredits), by: by || 'user' } }); },
 
+    // What one run cost so far: Claude tokens, images by quality, videos, and each event. Anyone who may open the run may see it.
+    async runReport(runId) {
+      if (!enabled) return { enabled: false };
+      const events = (await store.usage.list({ runId })).sort((a, b) => (a.at < b.at ? -1 : 1));
+      const of = (k) => events.filter((e) => e.kind === k);
+      const sum = (arr) => round(arr.reduce((a, e) => a + (e.cost || 0), 0));
+      const claude = of('claude')[0];
+      const imgQ = {};
+      for (const e of of('image')) imgQ[e.quality || 'medium'] = (imgQ[e.quality || 'medium'] || 0) + e.units;
+      return {
+        enabled: true, runId, cost: sum(events), tracked: events.length > 0,
+        claude: { cost: sum(of('claude')), inTokens: (claude && claude.meta && claude.meta.in) || 0, outTokens: (claude && claude.meta && claude.meta.out) || 0, calls: (claude && claude.meta && claude.meta.calls) || 0 },
+        images: { cost: sum(of('image')), count: of('image').reduce((a, e) => a + e.units, 0), byQuality: imgQ },
+        videos: { cost: sum(of('video')), count: of('video').reduce((a, e) => a + e.units, 0), credits: of('video').reduce((a, e) => a + ((e.meta && e.meta.credits) || 0), 0) },
+        events: events.map((e) => ({ kind: e.kind, units: e.units, unitLabel: e.unitLabel, quality: e.quality, cost: e.cost, at: e.at })),
+        prices,
+      };
+    },
+
     // The report. `viewer` is { id, isAdmin }. Non-admins only ever see their own events.
     async report({ viewer, range = 'month', userId, jobs = [] }) {
       if (!enabled) return { enabled: false };

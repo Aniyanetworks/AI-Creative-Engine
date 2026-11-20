@@ -63,8 +63,8 @@ export function createSupabaseStore(baseUrl, key) {
       await call('ace_usage', '', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ user_id: ev.userId || null, run_id: ev.runId || null, kind: ev.kind, units: ev.units || 0, unit_label: ev.unitLabel || null, quality: ev.quality || null, est_cost: ev.cost || 0, meta: ev.meta || null }) });
     },
     async has(runId, kind) { const rows = await call('ace_usage', '?run_id=eq.' + q(runId) + '&kind=eq.' + q(kind) + '&select=id&limit=1'); return rows.length > 0; },
-    async list({ userId, since } = {}) {
-      const f = (userId ? '&user_id=eq.' + q(userId) : '') + (since ? '&created_at=gte.' + q(since) : '');
+    async list({ userId, since, runId } = {}) {
+      const f = (userId ? '&user_id=eq.' + q(userId) : '') + (since ? '&created_at=gte.' + q(since) : '') + (runId ? '&run_id=eq.' + q(runId) : '');
       const rows = await call('ace_usage', '?select=*&order=created_at.desc&limit=5000' + f);
       return rows.map((r) => ({ id: r.id, userId: r.user_id, runId: r.run_id, kind: r.kind, units: Number(r.units), unitLabel: r.unit_label, quality: r.quality, cost: Number(r.est_cost), meta: r.meta, at: r.created_at }));
     },
@@ -109,7 +109,7 @@ export function createLocalStore(dataDir) {
   const usage = {
     async add(ev) { events.unshift({ id: Date.now() + Math.random(), userId: ev.userId || null, runId: ev.runId || null, kind: ev.kind, units: ev.units || 0, unitLabel: ev.unitLabel || null, quality: ev.quality || null, cost: ev.cost || 0, meta: ev.meta || null, at: new Date().toISOString() }); fs.writeFileSync(usageFile, JSON.stringify(events.slice(0, 5000))); },
     async has(runId, kind) { return events.some((e) => e.runId === runId && e.kind === kind); },
-    async list({ userId, since } = {}) { return events.filter((e) => (!userId || e.userId === userId) && (!since || e.at >= since)); },
+    async list({ userId, since, runId } = {}) { return events.filter((e) => (!userId || e.userId === userId) && (!since || e.at >= since) && (!runId || e.runId === runId)); },
   };
   return {
     kind: 'local',

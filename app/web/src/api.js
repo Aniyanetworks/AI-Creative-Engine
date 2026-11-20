@@ -71,6 +71,7 @@ export const api = {
   getPreview: (id, n) => call('/jobs/' + id + '/statics/' + n + '/preview'),
   renderStatic: (id, n, opts) => call('/jobs/' + id + '/statics/' + n + '/image', { method: 'POST', body: opts || {} }),
   saveToDrive: (id) => call('/jobs/' + id + '/save-to-drive', { method: 'POST' }),
+  getRunUsage: (id) => call('/jobs/' + id + '/usage'),
   getUsage: (range, user) => call('/usage?range=' + encodeURIComponent(range || 'month') + (user && user !== 'all' ? '&user=' + encodeURIComponent(user) : '')),
   getVoices: () => call('/voices'),
   rerunJob: (id, body) => call('/jobs/' + id + '/rerun', { method: 'POST', body: body || {} }),

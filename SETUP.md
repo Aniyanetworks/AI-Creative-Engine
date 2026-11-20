@@ -147,7 +147,7 @@ One-time setup (about 5 minutes):
 
 Troubleshooting: the Videos tab shows the failure reason and a link to the GitHub Actions log. To run it by hand: GitHub > Actions > *Render videos* > Run workflow > paste the run id. A render that has not finished after 45 minutes is reported as failed. Videos over 50 MB are refused by Supabase's free plan; lower the quality in `render.mjs` (`--crf`) if that ever happens.
 
-Tests: `node tools/test_render.mjs` (106 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
+Tests: `node tools/test_render.mjs` (110 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
 
 ### Choosing the voice
 Before a render, the Videos tab has a **Voiceover voice** menu (your choice is remembered in the browser). It lists your ElevenLabs account's voices when the key has the **Voices: Read** permission (add `ELEVENLABS_API_KEY` to Netlify too, so the app can list them); otherwise it shows ElevenLabs' stock voices. Pick *Other* to paste any voice id from ElevenLabs > Voices. The choice goes to the workflow as an input and falls back to the `ELEVENLABS_VOICE_ID` repository variable.
@@ -196,3 +196,5 @@ Sidebar > **Usage and cost**. Admins see every account (runs, images, videos, Cl
 Finished images are private Drive files, so the page cannot link to them directly. The app asks the n8n workflow **ACE - Get image** (`node tools/deploy_preview_n8n.js`) for Drive's own short-lived picture link for the file and shows that, with a "Loading preview…" state while Drive prepares a thumbnail (a just-made image can take a few seconds). Only files named like the app's ads (`..._static_<n>.png`) are ever answered, and nothing is downloaded through n8n or the app. On Netlify add `N8N_PREVIEW_WEBHOOK_URL` (Secret; printed by the deploy script). While an image is being remade the old picture is dimmed with "Making a new image…" until the new one is saved.
 
 The webhook paths in `workflow/.*-webhook-path` are secrets (they are git-ignored). If one is ever committed or shared, delete that file and run the matching `tools/deploy_*_n8n.js` again: it creates a new path and the old URL stops working.
+
+The same numbers are shown for a single run: an **Est. $x.xx** chip in the run header (next to Finished) opens a breakdown of Claude tokens, images by quality and videos for that run.
