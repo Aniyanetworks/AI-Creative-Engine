@@ -25,11 +25,13 @@ else { webhookPath = 'creative-engine-' + crypto.randomBytes(12).toString('hex')
 let driveHookUrl = '';
 try {
   const e = fs.readFileSync(path.join(root, '.env'), 'utf8').match(/^N8N_BASE_URL=(.*)$/m);
-  const base = (e ? e[1].trim().replace(/^['"]|['"]$/g, '') : 'https://n8n.srv1300653.hstgr.cloud').replace(/[/]+$/, '');
+  if (!e) throw new Error('N8N_BASE_URL is not in .env');
+  const base = e[1].trim().replace(/^['"]|['"]$/g, '').replace(/[/]+$/, '');
   driveHookUrl = base + '/webhook/' + fs.readFileSync(path.join(root, 'workflow', '.drive-webhook-path'), 'utf8').trim();
 } catch { /* not deployed yet: uploads go straight to the root folder */ }
 
 const BASE = `
+const cleanTags = (t) => [...new Set((Array.isArray(t) ? t : String(t || '').split(' ')).map((x) => '#' + String(x).replace(/[^A-Za-z0-9_]/g, '')).filter((x) => x.length > 1 && x.length <= 40))].slice(0, 8);
 const cfg = $('Config').first().json;
 const input = $('Webhook').first().json.body || {};
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -64,7 +66,7 @@ seq(place({
   parameters: {
     assignments: { assignments: [
       field('claude_model', 'claude-sonnet-5-5'),
-      field('image_model', 'gpt-image-1'),
+      field('image_model', 'gpt-image-2'),
       field('image_quality', 'medium'),
       field('drive_folder_id', 'root'),
       field('drive_hook_url', driveHookUrl),
@@ -226,7 +228,7 @@ llmStep('Static Concepts', 'statics', 20000, {
   user: `'BRAND BRIEF:\\n' + JSON.stringify(ctx.brief) + '\\n\\nHOOKS:\\n' + JSON.stringify(ctx.hooks)`,
   parse: `
 if (!Array.isArray(data.statics) || data.statics.length < 20) throw new Error('Expected 20 statics, got ' + (data.statics || []).length);
-const statics = data.statics.slice(0, 20).map((s, i) => ({ ...s, id: i + 1 }));
+const statics = data.statics.slice(0, 20).map((s, i) => ({ ...s, id: i + 1, hashtags: cleanTags(s.hashtags) }));
 const render_count = ctx.dry_run ? 0 : Math.max(0, Math.min(parseInt(input.max_images !== undefined && input.max_images !== '' ? input.max_images : cfg.max_images, 10) || 0, statics.length));
 return [{ json: { ...ctx, statics, render_count } }];`,
 });
@@ -374,7 +376,7 @@ const videos = data.videos.slice(0, 5).map((v, i) => {
   }).filter((sc) => sc.vo);
   if (scenes.length < 2) throw new Error('Video ' + (i + 1) + ' has no usable storyboard');
   const spoken = scenes.map((sc) => sc.vo).join(' '); // the voiceover is exactly the scene lines
-  return { ...v, id: v.id || i + 1, scenes, spoken_script: spoken, captions: scenes.map((sc) => sc.headline) };
+  return { ...v, id: v.id || i + 1, hashtags: cleanTags(v.hashtags), scenes, spoken_script: spoken, captions: scenes.map((sc) => sc.headline) };
 });
 return [{ json: { ...ctx, videos } }];`,
 });
@@ -441,11 +443,11 @@ L.push('**White space:** ' + (c.white_space || []).join('; '), '', '**Saturated:
 L.push('## 10 hooks', '', ...ctx.hooks.map((h) => h.id + '. [' + h.angle + '] ' + h.hook), '');
 L.push('## 20 static ads', '');
 for (const s of ctx.statics) {
-  L.push('### Static ' + s.id + ' (' + s.aspect + ', ' + s.style + ')', '- Image: ' + (s.image_url || s.image_status), '- Overlay: ' + s.overlay_text, '- Headline: ' + s.headline, '- Primary text: ' + String(s.primary_text).replace(/\\n/g, ' / '), '- CTA: ' + s.cta, '');
+  L.push('### Static ' + s.id + ' (' + s.aspect + ', ' + s.style + ')', '- Image: ' + (s.image_url || s.image_status), '- Overlay: ' + s.overlay_text, '- Headline: ' + s.headline, '- Primary text: ' + String(s.primary_text).replace(/\\n/g, ' / '), '- CTA: ' + s.cta, '- Tags: ' + (s.hashtags || []).join(' '), '');
 }
 L.push('## 5 video ads', '');
 for (const v of ctx.videos) {
-  L.push('### Video ' + v.id + ': ' + v.title + ' (' + v.format + ')', '- File: ' + (v.video_url || v.video_status), '- Script: ' + v.spoken_script, '- Captions: ' + (v.captions || []).join(' | '), '- CTA: ' + v.cta, '');
+  L.push('### Video ' + v.id + ': ' + v.title + ' (' + v.format + ')', '- File: ' + (v.video_url || v.video_status), '- Script: ' + v.spoken_script, '- Captions: ' + (v.captions || []).join(' | '), '- CTA: ' + v.cta, '- Tags: ' + (v.hashtags || []).join(' '), '');
 }
 const pack = {
   business: b.business_name, url: ctx.url, brief: b, competitors: c, hooks: ctx.hooks,

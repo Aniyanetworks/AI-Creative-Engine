@@ -8,6 +8,7 @@ Each video is 4 to 6 scenes, 22 to 32 seconds in total when spoken. Scene kinds:
 - "hook": scene 1 only. The boldest claim or question, spoken in the first 3 seconds.
 - "point": a single idea, problem or step.
 - "proof": a number or credential. Use ONLY facts from the brief's "proof" field. Put the number in the headline (e.g. "100+ workflows built").
+- "hashtags": 6 to 8 post tags for this ad, each a single word or camel-case phrase starting with # (for example #HVACRepair), no spaces or punctuation. Mix 2 broad industry tags, 3 to 4 niche or problem-specific tags, and 1 to 2 location or audience tags only if the brief names a place or audience. No trademarked competitor names, no banned or misleading tags (#fyp-style spam, #followforfollow).
 - "cta": the last scene only. One clear action matching the brief's offer.
 
 Per scene:
@@ -36,7 +37,8 @@ Return ONLY a JSON object:
         { "kind": "hook" | "point" | "proof" | "cta", "vo": string, "headline": string, "highlight": string, "sub": string, "icon": string }
       ],
       "cta": string,
-      "primary_text": string
+      "primary_text": string,
+      "hashtags": [string]
     }
   ]
 }

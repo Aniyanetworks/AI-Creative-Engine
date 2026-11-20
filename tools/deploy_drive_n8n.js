@@ -36,7 +36,7 @@ const ifNode = (name, left, row) => add({ name, type: 'n8n-nodes-base.if', typeV
 
 // ----- entry and routing -----
 const receive = add({ name: 'Receive', type: 'n8n-nodes-base.webhook', typeVersion: 2, webhookId: crypto.randomUUID(), parameters: { httpMethod: 'POST', path: webhookPath, responseMode: 'lastNode', options: { binaryPropertyName: 'file' } } });
-const isFolderJob = ifNode('Folder job?', "={{ ['ensure','delete'].includes(String($json.body && $json.body.action)) }}");
+const isFolderJob = ifNode('Folder job?', "={{ ['ensure','delete','find'].includes(String($json.body && $json.body.action)) }}");
 link(receive, isFolderJob);
 
 // ----- upload (multipart): the first uploaded file arrives as file0 -----
@@ -116,9 +116,28 @@ const trash = driveApi('Move to bin', { method: 'PATCH', url: '=https://www.goog
 const deleted = code('Deleted', `return [{ json: { ok: true, deleted: true, id: $('Folder result').first().json.id } }];`, -50);
 const nothing = code('Nothing to delete', `return [{ json: { ok: true, deleted: false } }];`, 50);
 const ensureReply = code('Ensure reply', `return [{ json: $('Folder result').first().json }];`, 50);
-link(result, isDelete);
+// find: is there a file with this name, created after a given time, in the folder? (used to learn that an image has been saved)
+const isFind = ifNode('Find?', '={{ $json.action === "find" }}', 150);
+const hasFolder = ifNode('Folder exists?', '={{ !!$json.id }}', 150);
+const query = driveApi('Query files', { method: 'GET', url: 'https://www.googleapis.com/drive/v3/files', sendQuery: true, queryParameters: { parameters: [
+  { name: 'q', value: "={{ \"name = '\" + String($('Receive').first().json.body.fileName || '').split(\"'\").join('') + \"' and '\" + $json.id + \"' in parents and trashed = false and createdTime > '\" + ($('Receive').first().json.body.after || '1970-01-01T00:00:00Z') + \"'\" }}" },
+  { name: 'fields', value: 'files(id,name,createdTime)' }, { name: 'orderBy', value: 'createdTime desc' }, { name: 'pageSize', value: '1' }, { name: 'supportsAllDrives', value: 'true' }, { name: 'includeItemsFromAllDrives', value: 'true' }] } }, 150);
+const findReply = code('Find reply', `const f = (($input.first().json || {}).files || [])[0];
+return [{ json: f ? { ok: true, found: true, id: f.id, url: 'https://drive.google.com/file/d/' + f.id + '/view' } : { ok: true, found: false } }];`, 150);
+const noFolder = code('No folder', `return [{ json: { ok: true, found: false } }];`, 250);
+link(result, isFind);
+link(isFind, hasFolder, 0); link(hasFolder, query, 0); link(hasFolder, noFolder, 1); link(query, findReply);
+link(isFind, isDelete, 1);
 link(isDelete, found, 0); link(isDelete, ensureReply, 1);
-link(found, trash, 0); link(found, nothing, 1);
+// Safety: only a folder named like a run folder ("2026-11-20 · a1b2c3") is ever trashed, so a leaked webhook URL cannot be
+// used to bin arbitrary Drive folders.
+const inspect = driveApi('Inspect folder', { method: 'GET', url: '=https://www.googleapis.com/drive/v3/files/{{ $json.id }}', sendQuery: true, queryParameters: { parameters: [
+  { name: 'fields', value: 'id,name,mimeType' }, { name: 'supportsAllDrives', value: 'true' }] } }, -50);
+const isRunFolder = ifNode('Is a run folder?', "={{ $json.mimeType === 'application/vnd.google-apps.folder' && /^[0-9]{4}-[0-9]{2}-[0-9]{2} · /.test($json.name || '') }}", -50);
+nodes.find((n) => n.name === 'Inspect folder').onError = 'continueRegularOutput'; // a missing folder just means nothing to delete
+link(found, inspect, 0); link(inspect, isRunFolder);
+link(isRunFolder, trash, 0); link(isRunFolder, nothing, 1);
+link(found, nothing, 1);
 link(trash, deleted);
 
 (async () => {

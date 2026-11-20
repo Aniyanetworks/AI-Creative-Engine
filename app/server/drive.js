@@ -7,7 +7,7 @@ export const runFolderName = (runId, createdAt) => String(createdAt || '').slice
 export function createDrive({ hookUrl, fetchImpl = fetch }) {
   const configured = !!hookUrl;
   const post = async (body) => {
-    const r = await fetchImpl(hookUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
+    const r = await fetchImpl(hookUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
     const j = await r.json().catch(() => null);
     if (!r.ok || !j) throw new Error('n8n answered HTTP ' + r.status);
     return j;
@@ -16,11 +16,13 @@ export function createDrive({ hookUrl, fetchImpl = fetch }) {
     configured,
     // Moves the run's Drive folder to the Drive bin. Returns 'deleted' | 'none' (nothing in Drive for this run) | 'skipped' (not set up).
     // Throws if n8n or Google could not do it, so the caller can tell the user.
-    async removeRun(job) {
+    // knownFolderId: the exact run folder when it was recorded (by the main workflow, or the render job); else it is found by name.
+    async removeRun(job, knownFolderId) {
       if (!configured) return 'skipped';
       const res = job.result || {};
       let body;
-      if (res.drive_folder_id) body = { action: 'delete', id: res.drive_folder_id };
+      const id = res.drive_folder_id || knownFolderId;
+      if (id) body = { action: 'delete', id };
       else {
         const business = cleanName(res.business || (res.brief && res.brief.business_name));
         if (!business || !job.createdAt) return 'none'; // no result yet: nothing was filed under a business name

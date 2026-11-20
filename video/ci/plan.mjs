@@ -36,7 +36,12 @@ try {
   // Google Drive: make the run's "Videos" folder once here, so the parallel render jobs do not each create one.
   let folder = '';
   if (process.env.N8N_DRIVE_WEBHOOK_URL) {
-    try { folder = await videosFolder(runId, process.env.N8N_DRIVE_WEBHOOK_URL); console.log('Drive folder ready.'); }
+    try {
+      const f = await videosFolder(runId, process.env.N8N_DRIVE_WEBHOOK_URL);
+      folder = f.videos;
+      if (f.run) await putJson(runId + '/drive-folder.json', { id: f.run }); // so deleting the run in the app finds this exact folder
+      console.log('Drive folder ready.');
+    }
     catch (e) { console.error('Drive folder could not be prepared (videos will not be copied to Drive):', e.message); }
   }
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify({ n: numbers })}\nfolder=${folder}\n`);

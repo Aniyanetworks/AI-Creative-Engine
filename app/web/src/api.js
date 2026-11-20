@@ -68,6 +68,7 @@ export const api = {
   removeJob: (id) => call('/jobs/' + id, { method: 'DELETE' }),
   getVideos: (id) => call('/jobs/' + id + '/videos'),
   renderVideos: (id, voiceId, only) => call('/jobs/' + id + '/render-videos', { method: 'POST', body: { voiceId: voiceId || '', only: only || [] } }),
+  renderStatic: (id, n) => call('/jobs/' + id + '/statics/' + n + '/image', { method: 'POST' }),
   saveToDrive: (id) => call('/jobs/' + id + '/save-to-drive', { method: 'POST' }),
   getVoices: () => call('/voices'),
   rerunJob: (id, body) => call('/jobs/' + id + '/rerun', { method: 'POST', body: body || {} }),

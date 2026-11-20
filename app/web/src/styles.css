@@ -303,3 +303,6 @@ section.card > .urow:first-child { border-top: 0; }
 .voicepick audio { max-width: 220px; }
 .pickvid { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
 .pickvid input { width: 16px; height: 16px; accent-color: var(--accent); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 4px; }
+.tagchip { background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 600; }
+.onebox { background: var(--accent-soft); border-radius: var(--r-sm); padding: 12px 14px; margin: 10px 0; }

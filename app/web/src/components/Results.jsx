@@ -46,8 +46,22 @@ function Hooks({ pack }) {
   );
 }
 
-function Statics({ pack }) {
+function Statics({ pack, jobId, onChanged }) {
   const [fmt, setFmt] = useState('all');
+  const [startErr, setStartErr] = useState('');
+  const [starting, setStarting] = useState(null);
+  const rendering = (pack.statics || []).some((s) => /^rendering:/.test(s.image_status || ''));
+  // While images are being made, ask for the run again every few seconds so finished ones appear.
+  useEffect(() => {
+    if (!rendering || !onChanged) return undefined;
+    const t = setInterval(onChanged, 5000);
+    return () => clearInterval(t);
+  }, [rendering, onChanged]);
+  const makeImage = async (s) => {
+    setStarting(s.id); setStartErr('');
+    try { await api.renderStatic(jobId, s.id); if (onChanged) await onChanged(); } catch (e) { setStartErr(e.message); }
+    finally { setStarting(null); }
+  };
   const colors = ((pack.brief && pack.brief.brand_colors) || []).filter(hexOk);
   const base = colors[0] || '#4338ca';
   const accent = colors[1] || null;
@@ -64,9 +78,12 @@ function Statics({ pack }) {
         </div>
         <span className="note">Previews show the overlay text in your brand color. Rendered images open in Google Drive.</span>
       </div>
+      {startErr && <div className="banner err"><AlertTriangle size={16} />{startErr}</div>}
       <div className="cards">
         {list.map((s) => {
-          const text = [s.headline, '', s.primary_text, '', 'CTA: ' + s.cta].join('\n');
+          const text = [s.headline, '', s.primary_text, '', 'CTA: ' + s.cta, ...((s.hashtags || []).length ? ['', s.hashtags.join(' ')] : [])].join('\n');
+          const busy = /^rendering:/.test(s.image_status || '') || starting === s.id;
+          const failed = /^failed/.test(s.image_status || '');
           return (
             <article key={s.id} className="ad">
               <div className="meta"><span>#{s.id} · {s.aspect} · {s.style}</span>
@@ -77,10 +94,17 @@ function Statics({ pack }) {
               <div className="body">
                 <p className="head">{s.headline}</p>
                 <p className="copy pre">{s.primary_text}</p>
+                <Tags list={s.hashtags} />
+                {failed && !busy && <p className="note" style={{ color: 'var(--bad)' }}>{s.image_status}</p>}
                 <div className="foot">
                   <span className="cta-tag">{s.cta}</span>
                   <CopyBtn text={text} label="Copy ad copy" />
                   {s.image_url && <a className="ghost" href={s.image_url} target="_blank" rel="noreferrer">Open image <ExternalLink size={13} /></a>}
+                  {jobId && onChanged && (
+                    <button type="button" className="ghost" disabled={busy} onClick={() => makeImage(s)} title="Makes this one image with OpenAI (about 4 cents at medium quality) and saves it to Drive">
+                      {busy ? <><Loader2 size={13} className="rot" /> Making image…</> : <><ImageIcon size={13} /> {s.image_url ? 'Make again' : 'Generate image'}</>}
+                    </button>
+                  )}
                 </div>
                 <details><summary>Image prompt</summary><p className="small pre muted" style={{ marginTop: 6 }}>{s.image_prompt}</p></details>
               </div>
@@ -89,6 +113,17 @@ function Statics({ pack }) {
         })}
       </div>
     </>
+  );
+}
+
+// Post tags: chips plus one button that copies them all.
+function Tags({ list }) {
+  if (!list || !list.length) return null;
+  return (
+    <div className="tags">
+      {list.map((t) => <span key={t} className="tagchip">{t}</span>)}
+      <CopyBtn text={list.join(' ')} label="Copy tags" />
+    </div>
   );
 }
 
@@ -222,7 +257,7 @@ function RenderPanel({ jobId, render, ids, selected }) {
           {!working && (
             <div className="row gap" style={{ marginTop: 12 }}>
               {confirm ? (<>
-                <button className="btn" onClick={start} disabled={busy}>{busy ? <Loader2 size={14} className="rot" /> : null} Yes, render {what} again (about {credits} credits)</button>
+                <button className="btn" onClick={start} disabled={busy || n === 0}>{busy ? <Loader2 size={14} className="rot" /> : null} Yes, render {what} again (about {credits} credits)</button>
                 <button className="ghost" onClick={() => setConfirm(false)}>Cancel</button>
               </>) : (
                 <button className={st.status === 'idle' ? 'btn' : 'ghost'} onClick={() => (st.status === 'idle' ? start() : setConfirm(true))} disabled={busy || n === 0}>
@@ -253,10 +288,28 @@ function Videos({ pack, jobId }) {
   const selected = sel ? ids.filter((i) => sel.includes(i)) : ids;
   const toggle = (id) => setSel(selected.includes(id) ? selected.filter((i) => i !== id) : [...selected, id]);
   const busyNow = !!(render.st && (render.st.status === 'queued' || render.st.status === 'rendering'));
+  const [oneBusy, setOneBusy] = useState(null);
+  const [oneErr, setOneErr] = useState('');
+  // Render just one video (about 500 ElevenLabs credits), with the voice chosen in the panel above.
+  // The card asks for the voice every time (prefilled with the last one used), then renders after an explicit confirm.
+  const [oneOpen, setOneOpen] = useState(null);
+  const [oneVoice, setOneVoice] = useState('');
+  const openOne = (n) => {
+    let v = '';
+    try { v = localStorage.getItem(VOICE_KEY) || ''; } catch { /* private mode */ }
+    setOneVoice(v); setOneOpen(n);
+  };
+  const renderOne = async (n) => {
+    setOneBusy(n); setOneErr('');
+    try { localStorage.setItem(VOICE_KEY, oneVoice); } catch { /* private mode */ }
+    try { await api.renderVideos(jobId, oneVoice, [n]); setOneOpen(null); await render.reload(); } catch (e) { setOneErr(e.message); }
+    finally { setOneBusy(null); }
+  };
   const files = (render.st && render.st.videos) || [];
   return (
     <>
       {hasBoards && <RenderPanel jobId={jobId} render={render} ids={ids} selected={selected} />}
+      {oneErr && <div className="banner err"><AlertTriangle size={16} />{oneErr}</div>}
       <div className="cards" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
         {videos.map((v, i) => {
           const file = files.find((f) => f.n === (v.id || i + 1));
@@ -288,7 +341,24 @@ function Videos({ pack, jobId }) {
                   ))}
                 </ol>
               ) : <div className="script">{v.spoken_script}</div>}
-              <div className="row gap"><CopyBtn text={v.spoken_script} label="Copy voiceover script" />{v.primary_text && <CopyBtn text={v.primary_text} label="Copy ad caption" />}{v.video_url && <a className="ghost" href={v.video_url} target="_blank" rel="noreferrer">Open video <ExternalLink size={13} /></a>}</div>
+              <Tags list={v.hashtags} />
+              {oneOpen === (v.id || i + 1) && (
+                <div className="onebox">
+                  <b className="small">Render video {v.id || i + 1} only</b>
+                  <VoicePicker value={oneVoice} onChange={setOneVoice} />
+                  <div className="row gap" style={{ marginTop: 10 }}>
+                    <button type="button" className="btn" onClick={() => renderOne(v.id || i + 1)} disabled={oneBusy !== null}>
+                      {oneBusy !== null ? <Loader2 size={14} className="rot" /> : <Clapperboard size={14} />} Render now (about 500 credits)
+                    </button>
+                    <button type="button" className="ghost" onClick={() => setOneOpen(null)} disabled={oneBusy !== null}>Cancel</button>
+                  </div>
+                </div>
+              )}
+              <div className="row gap">{hasBoards && ids.includes(v.id || i + 1) && render.st && render.st.configured && (
+                <button type="button" className="ghost" disabled={busyNow || oneBusy !== null} onClick={() => openOne(v.id || i + 1)} title="Renders only this video (about 500 ElevenLabs credits); you choose the voice first">
+                  {busyNow && (render.st.only || []).includes(v.id || i + 1) ? <><Loader2 size={13} className="rot" /> Rendering…</> : <><Clapperboard size={13} /> {file ? 'Render this video again' : 'Render this video'}</>}
+                </button>
+              )}<CopyBtn text={v.spoken_script} label="Copy voiceover script" />{v.primary_text && <CopyBtn text={[v.primary_text, ...((v.hashtags || []).length ? ['', v.hashtags.join(' ')] : [])].join(String.fromCharCode(10))} label="Copy ad caption" />}{v.video_url && <a className="ghost" href={v.video_url} target="_blank" rel="noreferrer">Open video <ExternalLink size={13} /></a>}</div>
             </article>
           );
         })}
@@ -348,7 +418,7 @@ function Report({ pack }) {
   );
 }
 
-export default function Results({ pack, jobId }) {
+export default function Results({ pack, jobId, onChanged }) {
   const [tab, setTab] = useState('Hooks');
   const st = pack.stats || {};
   const Body = { Hooks, 'Static ads': Statics, Videos, Brief, Competitors, Report }[tab];
@@ -377,7 +447,7 @@ export default function Results({ pack, jobId }) {
             </button>
           ))}
         </div>
-        <Body pack={pack} jobId={jobId} />
+        <Body pack={pack} jobId={jobId} onChanged={onChanged} />
       </section>
     </>
   );

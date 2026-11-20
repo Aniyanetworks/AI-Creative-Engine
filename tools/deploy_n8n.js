@@ -13,7 +13,7 @@ const H = { 'X-N8N-API-KEY': key, 'content-type': 'application/json' };
   const list = await (await fetch(base + '/api/v1/workflows?limit=20&name=' + encodeURIComponent(wf.name), { headers: H })).json();
   const existing = (list.data || []).find((w) => w.name === wf.name);
   // Copy optional settings from .env into the Config node at deploy time (the local JSON file stays free of secrets).
-  const map = { heygen_key: 'HEYGEN_API_KEY', heygen_avatar_id: 'HEYGEN_AVATAR_ID', heygen_voice_id: 'HEYGEN_VOICE_ID', apify_token: 'APIFY_TOKEN', drive_folder_id: 'DRIVE_FOLDER_ID' };
+  const map = { heygen_key: 'HEYGEN_API_KEY', heygen_avatar_id: 'HEYGEN_AVATAR_ID', heygen_voice_id: 'HEYGEN_VOICE_ID', apify_token: 'APIFY_TOKEN', drive_folder_id: 'DRIVE_FOLDER_ID', image_model: 'IMAGE_MODEL' };
   const applied = [];
   for (const a of wf.nodes.find((n) => n.name === 'Config').parameters.assignments.assignments) {
     if (map[a.name] && env[map[a.name]]) { a.value = env[map[a.name]]; applied.push(a.name); }

@@ -14,23 +14,24 @@ export const STOCK_VOICES = [
 
 export const isVoiceId = (v) => typeof v === 'string' && /^[A-Za-z0-9]{12,40}$/.test(v);
 
-let cache = null; // { at, voices }
+const cache = new Map(); // key -> { at, ttl, value }
 export async function listVoices({ apiKey, base = 'https://api.elevenlabs.io', fetchImpl = fetch } = {}) {
   const fallback = { source: 'stock', voices: STOCK_VOICES.map((v) => ({ ...v, previewUrl: null })) };
   if (!apiKey) return fallback;
-  if (cache && Date.now() - cache.at < 10 * 60 * 1000) return cache.value;
+  const hit = cache.get(apiKey);
+  if (hit && Date.now() - hit.at < hit.ttl) return hit.value;
+  // Remember a refusal (typically a key without "Voices: Read") for a while too, so every page load does not wait on it.
+  const remember = (value, ttl) => { cache.set(apiKey, { at: Date.now(), ttl, value }); return value; };
   try {
     const r = await fetchImpl(base.replace(/\/+$/, '') + '/v1/voices', { headers: { 'xi-api-key': apiKey }, signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return fallback; // typically 401: the key has no "Voices: Read" permission
+    if (!r.ok) return remember(fallback, 5 * 60 * 1000); // typically 401: the key has no "Voices: Read" permission
     const j = await r.json();
     const voices = (j.voices || []).filter((v) => isVoiceId(v.voice_id)).map((v) => ({
       id: v.voice_id, name: v.name,
       note: [v.labels && v.labels.gender, v.labels && v.labels.accent, v.labels && (v.labels.description || v.labels.use_case)].filter(Boolean).join(', '),
       previewUrl: v.preview_url || null,
     }));
-    if (!voices.length) return fallback;
-    const value = { source: 'account', voices };
-    cache = { at: Date.now(), value };
-    return value;
+    if (!voices.length) return remember(fallback, 5 * 60 * 1000);
+    return remember({ source: 'account', voices }, 10 * 60 * 1000);
   } catch { return fallback; }
 }

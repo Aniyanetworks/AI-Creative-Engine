@@ -7,7 +7,7 @@ const AsyncFn = Object.getPrototypeOf(async function () {}).constructor;
 const byName = Object.fromEntries(wf.nodes.map((n) => [n.name, n]));
 
 const hooks = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, angle: 'a' + i, hook: 'hook ' + i }));
-const statics = Array.from({ length: 20 }, (_, i) => ({ aspect: i % 2 ? '9:16' : '1:1', style: 's', overlay_text: 'o', headline: 'h', primary_text: 'p\nq', cta: 'Learn More', image_prompt: 'img' }));
+const statics = Array.from({ length: 20 }, (_, i) => ({ aspect: i % 2 ? '9:16' : '1:1', style: 's', overlay_text: 'o', headline: 'h', primary_text: 'p\nq', hashtags: ['#HVACRepair', 'fix it!', '#HVACRepair'], cta: 'Learn More', image_prompt: 'img' }));
 const scenes = [
   { kind: 'hook', vo: 'Stop wasting hours on manual work.', headline: 'Stop wasting hours', highlight: 'hours', sub: '', icon: 'clock' },
   { kind: 'point', vo: 'We automate your CRM and follow-ups.', headline: 'Automate your CRM', highlight: 'NOT-IN-HEADLINE', sub: 'No new tools', icon: 'bolt' },
@@ -140,6 +140,8 @@ async function run(body, maxImages, failImageIds = []) {
   check('drive: folders asked for are <business>/<date · run>/Static ads', driveCalls.length >= 1 && driveCalls[0].names[0] === 'Test Co' && /^[0-9]{4}-[0-9]{2}-[0-9]{2} · /.test(driveCalls[0].names[1]) && driveCalls[0].names[2] === 'Static ads', JSON.stringify(driveCalls[0]));
   check('drive: the run folder id is handed to the app for later deletion', real.final.drive_folder_id === 'RUN_ID' && /folders[/]RUN_ID$/.test(real.final.drive_folder_url), JSON.stringify([real.final.drive_folder_id, real.final.drive_folder_url]));
   check('drive: uploads are pointed at the run folders (static ads / run)', /static_id/.test(JSON.stringify(wf.nodes.find((n) => n.name === 'Upload To Drive').parameters.folderId)) && /run_id/.test(JSON.stringify(wf.nodes.find((n) => n.name === 'Upload Report').parameters.folderId)));
+  check('tags: cleaned, #-prefixed, de-duplicated; missing tags become an empty list', JSON.stringify(real.final.statics[0].hashtags) === JSON.stringify(['#HVACRepair', '#fixit']) && Array.isArray(real.final.videos[0].hashtags) && real.final.videos[0].hashtags.length === 0, JSON.stringify([real.final.statics[0].hashtags, real.final.videos[0].hashtags]));
+  check('tags: listed in the report', real.final.report_markdown.includes('- Tags: #HVACRepair #fixit'));
   check('report has business name', real.final.report_markdown.includes('# Ad Pack: Test Co'));
   console.log(ok ? '\nALL PASS' : '\nSOME FAILED');
   process.exit(ok ? 0 : 1);

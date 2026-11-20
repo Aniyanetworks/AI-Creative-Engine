@@ -1,7 +1,7 @@
 // Uploads every rendered MP4 in a folder to the storage bucket under "<runId>/".  Usage: node ci/upload.mjs <runId> <dir>
 import fs from 'fs';
 import path from 'path';
-import { putFile } from './storage.mjs';
+import { putFile, removeObject } from './storage.mjs';
 
 const [runId, dir] = process.argv.slice(2);
 if (!runId || !dir) { console.error('Usage: node ci/upload.mjs <runId> <dir>'); process.exit(1); }
@@ -13,5 +13,6 @@ for (const f of files) {
   if (size < 10_000) throw new Error(f + ' is only ' + size + ' bytes: the render looks broken.');
   if (size > 50 * 1024 * 1024) throw new Error(f + ' is ' + (size / 1048576).toFixed(1) + ' MB, over the 50 MB storage limit (lower the quality with --crf).');
   await putFile(runId + '/' + f, path.join(dir, f), 'video/mp4');
+  await removeObject(runId + '/' + f + '.drive.json').catch(() => {}); // the old Drive copy no longer matches this file
   console.log('Uploaded', f, (size / 1048576).toFixed(1) + ' MB');
 }

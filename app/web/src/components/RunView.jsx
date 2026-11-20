@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Globe, FileText, ScanSearch, Lightbulb, Image as ImageIcon, Clapperboard, Video, Package, Check, Loader2, AlertTriangle, Minus, Clock } from 'lucide-react';
 import { api } from '../api.js';
 import Results from './Results.jsx';
@@ -55,6 +55,7 @@ export default function RunView({ id, onFinished, onRerun }) {
     return () => { stopped.current = true; clearTimeout(timer); };
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const reloadJob = useCallback(async () => { try { setJob(await api.getJob(id)); } catch { /* shown on the next poll */ } }, [id]);
   const running = !!job && (job.status === 'queued' || job.status === 'running');
   useEffect(() => {
     if (!running) return undefined;
@@ -125,7 +126,7 @@ export default function RunView({ id, onFinished, onRerun }) {
         {running && <p className="note" style={{ marginTop: 16 }}>A dry run takes about 3–4 minutes. You can leave this page; the run continues in n8n and stays in the list on the left.</p>}
       </section>
 
-      {job.status === 'success' && job.result && <Results pack={job.result} jobId={job.id} />}
+      {job.status === 'success' && job.result && <Results pack={job.result} jobId={job.id} onChanged={reloadJob} />}
     </>
   );
 }

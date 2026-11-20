@@ -15,6 +15,7 @@ import { createStorage } from './storage.js';
 import { createRenderer } from './render.js';
 import { listVoices, isVoiceId } from './voices.js';
 import { createDrive } from './drive.js';
+import { createImages } from './images.js';
 
 dns.setDefaultResultOrder('ipv4first');
 if (net.setDefaultAutoSelectFamilyAttemptTimeout) net.setDefaultAutoSelectFamilyAttemptTimeout(5000);
@@ -69,6 +70,13 @@ if (!driveHook) {
   try { driveHook = N8N_BASE + '/webhook/' + fs.readFileSync(path.join(projectRoot, 'workflow', '.drive-webhook-path'), 'utf8').trim(); } catch { /* not deployed or on Netlify */ }
 }
 const drive = createDrive({ hookUrl: driveHook });
+
+// "Generate image" for one static ad (see app/server/images.js). Same idea: N8N_IMAGE_WEBHOOK_URL, or the local path file.
+let imageHook = pick('N8N_IMAGE_WEBHOOK_URL');
+if (!imageHook) {
+  try { imageHook = N8N_BASE + '/webhook/' + fs.readFileSync(path.join(projectRoot, 'workflow', '.image-webhook-path'), 'utf8').trim(); } catch { /* not deployed or on Netlify */ }
+}
+const images = createImages({ hookUrl: imageHook, driveHookUrl: driveHook, n8nApi: (p) => n8n(p), quality: pick('IMAGE_QUALITY') || 'medium' });
 
 const AUTH_ON = store.kind === 'supabase' && pick('AUTH_REQUIRED').toLowerCase() !== 'false';
 const auth = AUTH_ON ? createAuth({ supabaseUrl: SUPABASE_URL, apiKey: SUPABASE_PUBLISHABLE || SUPABASE_KEY }) : null;
@@ -356,11 +364,22 @@ app.delete('/api/jobs/:id', authenticate, approved, async (req, res) => {
   try {
     const job = await store.get(req.params.id);
     if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
-    // Take the run's Drive folder (to the Drive bin) and stored videos with it. Failures are reported, never block the removal.
-    const cleanup = { drive: 'skipped', videos: 'skipped' };
-    try { cleanup.drive = await drive.removeRun(job); } catch (e) { cleanup.drive = 'failed'; cleanup.driveError = e.message; }
-    if (storage) { try { await storage.removeFolder(job.id); cleanup.videos = 'deleted'; } catch (e) { cleanup.videos = 'failed'; } }
+    // Remove the run first, so a failure here leaves everything intact; then take its Drive folder (to the Drive bin) and
+    // stored videos with it, in parallel. Their failures are reported but never undo the removal.
     await store.remove(req.params.id);
+    const cleanup = { drive: 'skipped', videos: 'skipped' };
+    // Read the recorded Drive folder id before the stored files (which include that note) are deleted.
+    const saved = storage ? await storage.getJson(job.id + '/drive-folder.json').catch(() => null) : null;
+    await Promise.all([
+      (async () => {
+        try { cleanup.drive = await drive.removeRun(job, saved && saved.id); }
+        catch (e) { cleanup.drive = 'failed'; cleanup.driveError = e.message; }
+      })(),
+      (async () => {
+        if (!storage) return;
+        try { await storage.removeFolder(job.id); cleanup.videos = 'deleted'; } catch { cleanup.videos = 'failed'; }
+      })(),
+    ]);
     res.json({ ok: true, ...cleanup });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
@@ -369,7 +388,26 @@ app.get('/api/jobs/:id', authenticate, approved, async (req, res) => {
   try {
     const job = await store.get(req.params.id);
     if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
-    res.json(await refreshJob(job));
+    const out = await refreshJob(job);
+    // Images started with the "Generate image" button finish later; pick up the ones that are done.
+    if (out.status === 'success' && out.result) {
+      const updated = await images.resolve({ ...job, result: out.result }).catch(() => null);
+      if (updated) { await store.update(job.id, { result: updated }); out.result = updated; }
+    }
+    res.json(out);
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+// Generate (or regenerate) the image of one static ad.
+app.post('/api/jobs/:id/statics/:n/image', authenticate, approved, async (req, res) => {
+  try {
+    const job = await store.get(req.params.id);
+    if (!job || !ownsJob(req.user, job)) return res.status(404).json({ error: 'Unknown job' });
+    if (job.status !== 'success' || !job.result) return res.status(409).json({ error: 'Wait until the run has finished.' });
+    const n = parseInt(req.params.n, 10);
+    const result = await images.start(job, n);
+    await store.update(job.id, { result });
+    res.json({ ok: true });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 

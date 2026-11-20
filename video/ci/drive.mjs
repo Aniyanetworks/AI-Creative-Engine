@@ -5,7 +5,7 @@
 // Add --strict to fail the job when nothing could be uploaded.
 import fs from 'fs';
 import path from 'path';
-import { getBuffer, list, putJson } from './storage.mjs';
+import { getBuffer, getJson, list, putJson } from './storage.mjs';
 import { videosFolder } from './drivefolder.mjs';
 
 const args = process.argv.slice(2);
@@ -22,14 +22,23 @@ if (!runId || (!fromStorage && !dir)) {
   console.error('N8N_DRIVE_WEBHOOK_URL is not set (GitHub repository secret).');
   process.exitCode = strict ? 1 : 0;
 } else {
-  const names = fromStorage
+  let names = fromStorage
     ? (await list(runId)).filter((n) => /\.mp4$/i.test(n))
     : (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /\.mp4$/i.test(f)) : []);
+  if (fromStorage) {
+    // The "Save to Drive" button: skip videos that already have a Drive copy, so clicking twice never duplicates files.
+    const kept = [];
+    for (const n of names) {
+      const note = await getJson(runId + '/' + n + '.drive.json').catch(() => null);
+      if (note && note.url) console.log('Already in Drive:', n); else kept.push(n);
+    }
+    names = kept;
+  }
   let ok = 0;
   // The folder was prepared once by the plan step (DRIVE_VIDEOS_FOLDER_ID); the Drive-only job prepares it itself.
   let folderId = String(process.env.DRIVE_VIDEOS_FOLDER_ID || '').trim();
   if (!folderId && names.length) {
-    try { folderId = await videosFolder(runId, hook); } catch (e) { console.error('Drive folder could not be prepared:', e.message); }
+    try { folderId = (await videosFolder(runId, hook)).videos; } catch (e) { console.error('Drive folder could not be prepared:', e.message); }
   }
   if (!folderId && names.length) { console.error('Skipping Drive: no folder.'); process.exitCode = strict ? 1 : 0; names.length = 0; }
   for (const name of names) {

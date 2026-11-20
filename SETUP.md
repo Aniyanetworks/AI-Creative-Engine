@@ -39,7 +39,7 @@ Each writing step is three nodes: a prep Code node, an HTTP Request node using t
 | Step | Credential |
 |---|---|
 | All writing steps | Anthropic account |
-| Static images (`gpt-image-1`) | Manam- OpenAi account |
+| Static images (`gpt-image-2`; set `IMAGE_MODEL` in `.env` to change) | Manam- OpenAi account |
 | Storing images | Manam Google Drive account (uploads to `drive_folder_id` in Config, default My Drive root) |
 
 **Not in n8n, so optional:** `heygen_key` / `heygen_avatar_id` / `heygen_voice_id` (rendered videos; without them you get scripts only) and `apify_token` (real Meta Ad Library data). Set them in the **Config** node.
@@ -147,7 +147,7 @@ One-time setup (about 5 minutes):
 
 Troubleshooting: the Videos tab shows the failure reason and a link to the GitHub Actions log. To run it by hand: GitHub > Actions > *Render videos* > Run workflow > paste the run id. A render that has not finished after 45 minutes is reported as failed. Videos over 50 MB are refused by Supabase's free plan; lower the quality in `render.mjs` (`--crf`) if that ever happens.
 
-Tests: `node tools/test_render.mjs` (74 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
+Tests: `node tools/test_render.mjs` (90 checks against stand-ins for Supabase Storage and the GitHub API; no accounts or credits needed).
 
 ### Choosing the voice
 Before a render, the Videos tab has a **Voiceover voice** menu (your choice is remembered in the browser). It lists your ElevenLabs account's voices when the key has the **Voices: Read** permission (add `ELEVENLABS_API_KEY` to Netlify too, so the app can list them); otherwise it shows ElevenLabs' stock voices. Pick *Other* to paste any voice id from ElevenLabs > Voices. The choice goes to the workflow as an input and falls back to the `ELEVENLABS_VOICE_ID` repository variable.
@@ -177,3 +177,11 @@ Behaviour:
 
 ### Rendering only some videos
 Each video card has a **Render** tick box. The button then says "Render 2 selected" and the credit estimate (about 500 per video) updates. Videos you do not tick keep their earlier files. Automatic renders after a full run always do all five.
+
+### Generate one image / render one video from the app
+- **Static ads tab:** every ad has **Generate image** (or **Make again**). It calls the n8n workflow **ACE - Render one image** (`node tools/deploy_image_n8n.js`, deploy the Drive workflow first): OpenAI makes the image (about 4 cents at medium quality; set `IMAGE_QUALITY=low|medium|high` in the server environment) and it is saved to `<business>/<date · run>/Static ads/` in Drive. The card shows "Making image…" and fills in when the file lands (usually under a minute). For Netlify add `N8N_IMAGE_WEBHOOK_URL` (Secret; the URL is printed by the deploy script).
+- **Videos tab:** every card has **Render this video**. It asks for the voice each time (pre-filled with your last choice), then renders only that video (about 500 ElevenLabs credits).
+- **Image model:** the OpenAI account in n8n has no `gpt-image-1` (its model list shows `gpt-image-2`, `gpt-image-1.5` and `gpt-image-1-mini`), so the workflows use `gpt-image-2`. If you re-deploy with a different model, set `IMAGE_MODEL` in `.env` and run `tools/deploy_n8n.js` and `tools/deploy_image_n8n.js`.
+
+### Post tags
+Claude now writes 6 to 8 hashtags for every static ad and video (mix of broad, niche and, if the brief names a place, local tags). They show as chips on each card with **Copy tags**; **Copy ad copy / Copy ad caption** includes them, and the saved report lists them. Runs made before this change have no tags (run them again).

@@ -51,6 +51,11 @@ export async function getBuffer(objectPath) {
   return Buffer.from(await r.arrayBuffer());
 }
 
+export async function removeObject(objectPath) {
+  await ensureBucket();
+  await call('/object/' + BUCKET, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prefixes: [objectPath] }) });
+}
+
 export async function list(prefix) {
   await ensureBucket();
   const r = await call('/object/list/' + BUCKET, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prefix, limit: 100, sortBy: { column: 'name', order: 'asc' } }) });

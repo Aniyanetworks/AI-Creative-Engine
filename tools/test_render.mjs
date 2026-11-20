@@ -253,7 +253,7 @@ check('route: the chosen voice is shown in the status', x.json.voiceId === 'pNIn
 const { listVoices } = await import('../app/server/voices.js');
 let v = await listVoices({ apiKey: 'k', base, fetchImpl: async () => ({ ok: false, status: 401, json: async () => ({}) }) });
 check('voices: a key without Voices:Read falls back to stock voices', v.source === 'stock' && v.voices.length >= 5);
-v = await listVoices({ apiKey: 'k', fetchImpl: async () => ({ ok: true, json: async () => ({ voices: [{ voice_id: 'AAAAAAAAAAAAAAAAAAAA', name: 'Mine', labels: { accent: 'british', gender: 'male' }, preview_url: 'https://x/p.mp3' }, { voice_id: 'bad', name: 'Junk' }] }) }) });
+v = await listVoices({ apiKey: 'k-account', fetchImpl: async () => ({ ok: true, json: async () => ({ voices: [{ voice_id: 'AAAAAAAAAAAAAAAAAAAA', name: 'Mine', labels: { accent: 'british', gender: 'male' }, preview_url: 'https://x/p.mp3' }, { voice_id: 'bad', name: 'Junk' }] }) }) });
 check('voices: lists the account voices with notes and previews, skipping junk ids', v.source === 'account' && v.voices.length === 1 && v.voices[0].name === 'Mine' && /british/.test(v.voices[0].note) && v.voices[0].previewUrl === 'https://x/p.mp3', JSON.stringify(v));
 
 // ---- Google Drive copies through n8n ----
@@ -339,7 +339,11 @@ objects.set('folderrun001/1-a.mp4', { body: Buffer.alloc(100), contentType: 'vid
 objects.set('folderrun001/status.json', { body: Buffer.from('{}'), contentType: 'application/json' });
 n8n.folderCalls.length = 0;
 x = await delApi('folderrun001');
-check('delete: the run folder is looked up by business and run name, and trashed in Drive', x.status === 200 && x.json.drive === 'deleted' && n8n.folderCalls.length === 1 && n8n.folderCalls[0].action === 'delete' && JSON.stringify(n8n.folderCalls[0].names) === JSON.stringify(['Acme Heating Cooling', '2026-11-20 · folder']), JSON.stringify(x.json) + JSON.stringify(n8n.folderCalls));
+check('delete: the exact run folder recorded by the render job is the one trashed', x.status === 200 && x.json.drive === 'deleted' && n8n.folderCalls.length === 1 && n8n.folderCalls[0].action === 'delete' && n8n.folderCalls[0].id === 'B' && !n8n.folderCalls[0].names, JSON.stringify(x.json) + JSON.stringify(n8n.folderCalls));
+runs.set('folderrun006', { created_at: '2026-11-20T10:00:00Z', url: 'https://x.test', result: { business: 'Acme: Heating / Cooling', videos: [] }, status: 'success' });
+n8n.folderCalls.length = 0;
+x = await delApi('folderrun006');
+check('delete: with no recorded folder it falls back to business and run name', x.json.drive === 'deleted' && JSON.stringify(n8n.folderCalls[0].names) === JSON.stringify(['Acme Heating Cooling', '2026-11-20 · folder']), JSON.stringify(n8n.folderCalls));
 check('delete: the stored videos are removed too', x.json.videos === 'deleted' && ![...objects.keys()].some((k) => k.startsWith('folderrun001/')), JSON.stringify([...objects.keys()]));
 n8n.folderCalls.length = 0;
 x = await delApi('folderrun002');
@@ -357,6 +361,75 @@ runs.set('folderrun005', { created_at: '2026-11-20T10:00:00Z', url: 'https://x.t
 n8n.folderCalls.length = 0;
 x = await delApi('folderrun005');
 check('delete: a run with no result yet does not touch Drive', x.status === 200 && x.json.drive === 'none' && n8n.folderCalls.length === 0, JSON.stringify(x.json));
+
+// ---- "Generate image" for one static ad ----
+{
+  const { createImages } = await import('../app/server/images.js');
+  const calls = [];
+  let findAnswer = { ok: true, found: false };
+  const execs = {};
+  let clock = Date.parse('2026-11-20T10:00:00Z');
+  const fakeFetch = async (url, o) => {
+    const b = JSON.parse(o.body); calls.push({ url, b });
+    return { ok: true, json: async () => (url.endsWith('/image') ? { execution_id: '777', request_id: b.request_id } : findAnswer) };
+  };
+  const n8nApi = async (p) => {
+    const m = /\/executions\/(\d+)\?includeData=(true|false)/.exec(p);
+    if (!m || !execs[m[1]]) throw new Error('n8n 404');
+    return m[2] === 'true' ? { status: 'error', data: { resultData: { error: { message: 'x', description: 'The model does not exist' } } } } : { status: execs[m[1]] };
+  };
+  const im = createImages({ hookUrl: 'http://x/image', driveHookUrl: 'http://x/drive', n8nApi, fetchImpl: fakeFetch, now: () => clock, quality: 'low' });
+  const job = { id: 'abcdef123456', createdAt: '2026-11-20T09:00:00Z', result: { business: 'Acme: HVAC', statics: [{ id: 1, aspect: '1:1', image_prompt: 'a wrench' }, { id: 2, aspect: '9:16', image_prompt: '' }], stats: {} } };
+  const fails = async (fn) => { try { await fn(); return null; } catch (e) { return e; } };
+
+  await im.start(job, 1);
+  const st1 = job.result.statics[0];
+  check('image: start marks the ad as rendering with the execution id and file name', st1.image_status === 'rendering:777' && st1.image_file === 'acme-hvac_static_1.png', JSON.stringify(st1));
+  check('image: the request carries prompt, shape, quality and the run\'s Static ads folder', calls[0].b.image_prompt === 'a wrench' && calls[0].b.aspect === '1:1' && calls[0].b.quality === 'low' && JSON.stringify(calls[0].b.folder_request) === JSON.stringify({ action: 'ensure', names: ['Acme HVAC', '2026-11-20 · abcdef', 'Static ads'] }), JSON.stringify(calls[0].b));
+  check('image: asking again while it is being made is refused', (await fails(() => im.start(job, 1)))?.status === 409);
+  check('image: an ad without an image prompt is refused', (await fails(() => im.start(job, 2)))?.status === 409);
+  check('image: an unknown ad is a 404', (await fails(() => im.start(job, 99)))?.status === 404);
+  check('image: while the image is not in Drive and n8n has no failure, it keeps waiting', (await im.resolve(job)) === null && st1.image_status === 'rendering:777');
+
+  findAnswer = { ok: true, found: true, id: 'F1', url: 'https://drive.google.com/file/d/F1/view' };
+  const done = await im.resolve(job);
+  const findCall = calls.filter((c) => c.url === 'http://x/drive').pop().b;
+  check('image: once the file is in Drive the link is recorded and the counter updated', !!done && st1.image_status === 'ok' && st1.image_url.endsWith('/F1/view') && done.stats.statics_rendered === 1 && !st1.image_started, JSON.stringify(st1));
+  check('image: Drive is asked only for files created after the request, in the same folder, without creating it', findCall.action === 'find' && findCall.create === false && findCall.fileName === 'acme-hvac_static_1.png' && Date.parse(findCall.after) < clock && JSON.stringify(findCall.names) === JSON.stringify(['Acme HVAC', '2026-11-20 · abcdef', 'Static ads']), JSON.stringify(findCall));
+
+  findAnswer = { ok: true, found: false }; execs['777'] = 'error';
+  await im.start(job, 1);
+  check('image: "make again" starts a new request', st1.image_status === 'rendering:777' && calls.filter((c) => c.url === 'http://x/image').length === 2);
+  await im.resolve(job);
+  check('image: a failed workflow is reported with its reason', /^failed: The model does not exist/.test(st1.image_status), st1.image_status);
+
+  execs['777'] = 'running'; delete execs['777'];
+  await im.start(job, 1);
+  clock += 9 * 60 * 1000;
+  await im.resolve(job);
+  check('image: a render that never shows up times out instead of spinning forever', /^failed: timed out/.test(st1.image_status), st1.image_status);
+
+  job.result.drive_folder_id = 'RUNFOLDER';
+  await im.start(job, 1);
+  check('image: when the workflow recorded the run folder, Static ads is made inside it', JSON.stringify(calls.filter((c) => c.url === 'http://x/image').pop().b.folder_request) === JSON.stringify({ action: 'ensure', parentId: 'RUNFOLDER', names: ['Static ads'] }));
+  const off = createImages({ hookUrl: '', n8nApi, fetchImpl: fakeFetch });
+  check('image: without the webhook configured the feature reports it', (await fails(() => off.start(job, 1)))?.status === 409);
+}
+
+// the Save-to-Drive button never duplicates what is already in Drive, and a re-render forgets the old Drive note
+{
+  const DR2 = 'driverun0002';
+  objects.set(DR2 + '/1-a.mp4', { body: Buffer.alloc(20000, 1), contentType: 'video/mp4' });
+  objects.set(DR2 + '/2-b.mp4', { body: Buffer.alloc(20000, 2), contentType: 'video/mp4' });
+  objects.set(DR2 + '/1-a.mp4.drive.json', { body: Buffer.from(JSON.stringify({ url: 'https://drive.google.com/file/d/OLD/view' })), contentType: 'application/json' });
+  runs.set(DR2, { created_at: '2026-11-20T10:00:00Z', url: 'https://x.test', result: { business: 'Acme', videos: [] }, status: 'success' });
+  n8n.calls.length = 0; n8n.fail = false;
+  r = await run('video/ci/drive.mjs', [DR2, '--from-storage', '--strict'], { N8N_DRIVE_WEBHOOK_URL: hookUrl, DRIVE_VIDEOS_FOLDER_ID: 'V' });
+  check('drive: "Save to Drive" skips videos that already have a Drive copy', r.code === 0 && n8n.calls.length === 1 && /2-b\.mp4/.test(n8n.calls[0].name) && /Already in Drive: 1-a\.mp4/.test(r.out), r.err + r.out + JSON.stringify(n8n.calls));
+  const d3 = path.join(tmp, 'out4'); fs.mkdirSync(d3); fs.writeFileSync(path.join(d3, '1-a.mp4'), Buffer.alloc(30000, 9));
+  r = await run('video/ci/upload.mjs', [DR2, d3], {});
+  check('upload: a re-rendered video forgets its old Drive link', r.code === 0 && !objects.has(DR2 + '/1-a.mp4.drive.json'), r.err);
+}
 
 srv.kill();
 

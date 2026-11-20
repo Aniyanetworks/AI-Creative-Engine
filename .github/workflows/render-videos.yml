@@ -114,6 +114,8 @@ jobs:
         with:
           node-version: 20
       - name: Copy the rendered videos to Google Drive
+        env:
+          DRIVE_VIDEOS_FOLDER_ID: ${{ needs.prepare.outputs.folder }}
         run: node video/ci/drive.mjs "$RUN_ID" --from-storage --strict
 
   finish:
