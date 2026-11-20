@@ -99,8 +99,8 @@ export default function PostDialog({ jobId, pack, ads, defaultLink, onClose, onD
         {meta && !meta.connected && (
           <div className="banner warn" style={{ display: 'block' }}>
             <b>Connect your Facebook account first.</b>
-            <p className="small" style={{ margin: '6px 0 8px' }}>{meta.configured ? 'It takes a minute: you sign in at Facebook and choose the Pages and ad accounts to use.' : 'Facebook is not set up on this server yet (see Account > Connected accounts).'}</p>
-            <button className="btn sm" onClick={() => { onClose(); goAccount && goAccount(); }}>Go to Connected accounts</button>
+            <p className="small" style={{ margin: '6px 0 8px' }}>{meta.configured ? 'It takes a minute: you sign in at Facebook and choose the Pages and ad accounts to use.' : 'Posting is not switched on yet. Ask the app admin to turn it on.'}</p>
+            {meta.configured && <button className="btn sm" onClick={() => { onClose(); goAccount && goAccount(); }}>Connect Facebook</button>}
           </div>
         )}
 

@@ -5,7 +5,7 @@ import { api } from '../api.js';
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '');
 
 // Account page section: connect YOUR Facebook account (Pages, Instagram, ad accounts) so ads can be posted from the app.
-export default function ConnectedAccounts({ notice }) {
+export default function ConnectedAccounts({ notice, isAdmin }) {
   const [st, setSt] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
@@ -30,20 +30,33 @@ export default function ConnectedAccounts({ notice }) {
         <span className="tile"><Link2 size={18} /></span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <b style={{ display: 'block' }}>Connected accounts</b>
-          <span className="muted small">Connect your own Facebook account to post ads from here: Meta ads (always created paused), Facebook Page posts, and Instagram. Other people who use this app connect their own.</span>
+          <span className="muted small">Connect Facebook to post your ads straight from here. Nothing is posted without your OK, and ads are always created paused.</span>
         </div>
       </div>
       {notice && <div className={'banner ' + (notice.ok ? 'ok' : 'err')} style={{ marginTop: 14 }}>{notice.ok ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}{notice.text}</div>}
       {err && <div className="banner err" style={{ marginTop: 14 }}><AlertTriangle size={16} />{err}</div>}
       {!st ? <p className="muted small" style={{ marginTop: 14 }}><Loader2 size={14} className="rot" /> Checking…</p> : !st.configured ? (
-        <div className="banner warn" style={{ marginTop: 14, display: 'block' }}>
-          <b>Facebook connection is not set up on this server yet.</b>
-          <p className="small" style={{ margin: '6px 0 0' }}>The server needs {st.missing.join(', ')}. In your Meta developer app add this redirect address: <code>{st.redirectUri}</code>. Setup steps are in SETUP.md (Posting to Meta).</p>
-        </div>
+        isAdmin ? (
+          <div className="banner warn" style={{ marginTop: 14, display: 'block' }}>
+            <b>Facebook posting needs a one-time setup.</b>
+            <p className="small" style={{ margin: '6px 0 0' }}>It takes about ten minutes and only has to be done once for everyone.</p>
+            <details style={{ marginTop: 8 }}>
+              <summary className="small">Show the setup details</summary>
+              <ol className="small" style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
+                <li>Create an app at developers.facebook.com (type Business) and add Facebook Login and Marketing API.</li>
+                <li>Add this as a Valid OAuth Redirect URI: <code>{st.redirectUri}</code></li>
+                <li>Put the app's ID and secret into the server settings{st.missing.length ? ': still missing ' + st.missing.join(', ') : ''}.</li>
+              </ol>
+              <p className="note" style={{ margin: '8px 0 0' }}>The full steps are in SETUP.md under "Posting to Meta".</p>
+            </details>
+          </div>
+        ) : (
+          <div className="banner warn" style={{ marginTop: 14 }}><AlertTriangle size={16} />Posting to Facebook and Instagram is not switched on yet. Ask the app admin to turn it on.</div>
+        )
       ) : !st.connected ? (
         <div style={{ marginTop: 14 }}>
           <button className="btn" onClick={connect} disabled={busy === 'connect'}>{busy === 'connect' ? <Loader2 size={14} className="rot" /> : <Facebook size={14} />} Connect Facebook</button>
-          <p className="note" style={{ marginTop: 8 }}>You will sign in at Facebook and choose which Pages and ad accounts to share. This app can only post when you confirm each post.</p>
+          <p className="note" style={{ marginTop: 8 }}>You sign in at Facebook and choose which Pages and ad accounts to use. Only you can post with your account.</p>
         </div>
       ) : (
         <div style={{ marginTop: 14 }}>

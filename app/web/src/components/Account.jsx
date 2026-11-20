@@ -30,7 +30,7 @@ export default function Account({ me, onSignOut, notice }) {
       <h2 style={{ marginBottom: 4 }}>Account</h2>
       <p className="muted small" style={{ marginBottom: 18 }}>Manage how you sign in.</p>
 
-      <ConnectedAccounts notice={notice} />
+      <ConnectedAccounts notice={notice} isAdmin={!!me.isAdmin} />
 
       <section className="card" style={{ marginTop: 18 }}>
         <div className="row gap" style={{ flexWrap: 'nowrap' }}>
