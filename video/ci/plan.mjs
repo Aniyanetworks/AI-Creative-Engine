@@ -25,6 +25,9 @@ try {
   const rows = await r.json();
   if (!rows[0] || !rows[0].result) await fail('Run ' + runId + ' was not found or has no result yet.');
 
+  // A selection that did not parse must never turn into "render everything".
+  if (String(process.env.ONLY || '').trim() && !only.length) await fail('The selected video number was not understood, so nothing was rendered.');
+
   const videos = (rows[0].result.videos || []).map((v, i) => ({ n: v.id || i + 1, ok: Array.isArray(v.scenes) && v.scenes.length > 0 }));
   const numbers = videos.filter((v) => v.ok && (!only.length || only.includes(v.n))).map((v) => v.n);
   if (!numbers.length) await fail('This run has no video storyboards to render.');
