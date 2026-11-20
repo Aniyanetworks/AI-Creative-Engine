@@ -65,6 +65,9 @@ check('secrets: without a key nothing is stored', createSecrets('').configured =
 const meta = createMeta({ appId: 'APPID', appSecret: 'APPSECRET', graphBase: GRAPH, dialogBase: 'https://fb.example' });
 const url = new URL(meta.authUrl('STATE1', 'https://app.example/api/meta/callback'));
 check('client: the login link asks for the right permissions and carries the state', url.searchParams.get('client_id') === 'APPID' && url.searchParams.get('state') === 'STATE1' && url.searchParams.get('scope').includes('pages_manage_posts') && url.searchParams.get('scope').includes('ads_management') && url.searchParams.get('scope').includes('instagram_content_publish') && url.searchParams.get('redirect_uri') === 'https://app.example/api/meta/callback');
+const metaBiz = createMeta({ appId: 'APPID', appSecret: 'APPSECRET', configId: 'CFG123', graphBase: GRAPH, dialogBase: 'https://fb.example' });
+const bizUrl = new URL(metaBiz.authUrl('S', 'https://app.example/cb'));
+check('client: with a Facebook Login for Business configuration the login link uses config_id (and no scope)', bizUrl.searchParams.get('config_id') === 'CFG123' && bizUrl.searchParams.get('override_default_response_type') === 'true' && bizUrl.searchParams.get('response_type') === 'code' && !bizUrl.searchParams.get('scope'));
 const ex = await meta.exchange('GOODCODE', 'https://app.example/api/meta/callback');
 check('client: a login code becomes a long-lived token with an expiry', ex.token === 'LONG_USER_TOKEN' && !!ex.expiresAt && calls.some((c) => c.params.grant_type === 'fb_exchange_token' && c.params.client_secret === 'APPSECRET'));
 let bad = null; try { await meta.exchange('BADCODE', 'x'); } catch (e) { bad = e; }

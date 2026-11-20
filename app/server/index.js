@@ -99,7 +99,7 @@ const models = createModels(pick);
 
 // ---- Connected Meta accounts and posting (see app/server/meta.js). Every person connects their OWN Facebook account. ----
 const secrets = createSecrets(pick('TOKEN_ENC_KEY'));
-const meta = createMeta({ appId: pick('META_APP_ID'), appSecret: pick('META_APP_SECRET'), ...(pick('META_GRAPH_URL') ? { graphBase: pick('META_GRAPH_URL') } : {}), ...(pick('META_DIALOG_URL') ? { dialogBase: pick('META_DIALOG_URL') } : {}), ...(pick('META_API_VERSION') ? { version: pick('META_API_VERSION') } : {}) });
+const meta = createMeta({ appId: pick('META_APP_ID'), appSecret: pick('META_APP_SECRET'), configId: pick('META_CONFIG_ID'), ...(pick('META_GRAPH_URL') ? { graphBase: pick('META_GRAPH_URL') } : {}), ...(pick('META_DIALOG_URL') ? { dialogBase: pick('META_DIALOG_URL') } : {}), ...(pick('META_API_VERSION') ? { version: pick('META_API_VERSION') } : {}) });
 const publicBase = (pick('PUBLIC_URL') || process.env.URL || '').replace(/\/+$/, '');
 const metaRedirect = pick('META_REDIRECT_URI') || (publicBase ? publicBase + '/api/meta/callback' : 'http://localhost:' + PORT + '/api/meta/callback');
 const metaReady = () => meta.configured && secrets.configured;

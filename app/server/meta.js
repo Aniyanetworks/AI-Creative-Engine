@@ -11,7 +11,7 @@ export const SCOPES = ['pages_show_list', 'pages_manage_posts', 'pages_read_enga
 // Our call-to-action wording -> Meta's call_to_action types ("Book Now" has no general Meta equivalent, so it becomes Learn More).
 export const CTA_TYPES = { 'Learn More': 'LEARN_MORE', 'Sign Up': 'SIGN_UP', 'Book Now': 'LEARN_MORE', 'Contact Us': 'CONTACT_US', 'Get Quote': 'GET_QUOTE', 'Apply Now': 'APPLY_NOW', Download: 'DOWNLOAD', 'Shop Now': 'SHOP_NOW' };
 
-export function createMeta({ appId, appSecret, version = 'v21.0', graphBase = 'https://graph.facebook.com', dialogBase = 'https://www.facebook.com', fetchImpl = fetch }) {
+export function createMeta({ appId, appSecret, configId = '', version = 'v21.0', graphBase = 'https://graph.facebook.com', dialogBase = 'https://www.facebook.com', fetchImpl = fetch }) {
   const configured = !!(appId && appSecret);
   const base = graphBase.replace(/\/+$/, '') + '/' + version;
 
@@ -40,7 +40,11 @@ export function createMeta({ appId, appSecret, version = 'v21.0', graphBase = 'h
     authUrl(state, redirectUri) {
       const u = new URL(dialogBase.replace(/\/+$/, '') + '/' + version + '/dialog/oauth');
       u.searchParams.set('client_id', appId); u.searchParams.set('redirect_uri', redirectUri); u.searchParams.set('state', state);
-      u.searchParams.set('scope', SCOPES.join(',')); u.searchParams.set('response_type', 'code');
+      u.searchParams.set('response_type', 'code');
+      // Apps that use "Facebook Login for Business" log in with a Configuration (its permissions are chosen in the Meta dashboard);
+      // classic apps pass the permissions as a scope.
+      if (configId) { u.searchParams.set('config_id', configId); u.searchParams.set('override_default_response_type', 'true'); }
+      else u.searchParams.set('scope', SCOPES.join(','));
       return u.toString();
     },
 
