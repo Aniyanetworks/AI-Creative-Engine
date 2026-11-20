@@ -46,7 +46,7 @@ button { font: inherit; color: inherit; }
 .rm { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border: 0; border-radius: 7px; background: none; color: var(--faint); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity .12s; }
 .runitem:hover .rm, .rm:focus-visible { opacity: 1; } .rm:hover { background: var(--bad-soft); color: var(--bad); }
 @media (hover: none) { .rm { opacity: 1; } }
-.main { padding: 28px clamp(18px, 4vw, 48px) 80px; max-width: 1120px; width: 100%; margin: 0 auto; }
+.main { padding: 28px clamp(18px, 3vw, 40px) 80px; max-width: 1680px; width: 100%; margin: 0 auto; }
 
 /* ---------- icons, tiles, motion, skeletons ---------- */
 .rot { animation: sp .9s linear infinite; }
@@ -474,3 +474,7 @@ select:hover { border-color: var(--muted); } select:focus-visible { outline: 2px
 .opps { background: var(--accent-soft); border-radius: var(--r); padding: 12px 14px; margin: 12px 0; } .opps h4 { margin: 0 0 6px; }
 .opps li { display: flex; gap: 10px; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; } .opps li span { flex: 1; }
 .ghost.sm { padding: 3px 9px; font-size: 12px; white-space: nowrap; }
+
+/* Wider main area: keep text-heavy pages readable while the results grids use the extra room */
+.guide { max-width: 1200px; }
+.cards.ads { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
